@@ -1,0 +1,161 @@
+"""Heading-based semantic chunking strategy.
+
+Splits markdown at heading boundaries, preserving document structure.
+Falls back to fixed-size splitting when sections exceed max_tokens.
+"""
+
+from __future__ import annotations
+
+import re
+
+from ctx.chunker.base import Chunk, ChunkStrategy, count_tokens, slugify
+
+
+class HeadingChunker(ChunkStrategy):
+    """Split markdown at heading boundaries."""
+
+    def chunk(
+        self,
+        content: str,
+        *,
+        module_name: str,
+        source_file: str,
+        tags: list[str],
+        version: str,
+        max_tokens: int = 500,
+        overlap_tokens: int = 50,
+        heading_level: int = 2,
+        **kwargs,
+    ) -> list[Chunk]:
+        sections = self._split_at_level(content, heading_level)
+        chunks: list[Chunk] = []
+
+        for section_path, section_content in sections:
+            token_count = count_tokens(section_content)
+
+            if token_count <= max_tokens:
+                chunks.append(self._make_chunk(
+                    section_content, section_path,
+                    module_name=module_name,
+                    source_file=source_file,
+                    tags=tags, version=version,
+                ))
+            else:
+                # Try splitting at next heading level
+                sub_sections = self._split_at_level(section_content, heading_level + 1)
+                if len(sub_sections) > 1:
+                    for sub_path, sub_content in sub_sections:
+                        full_path = section_path + sub_path
+                        if count_tokens(sub_content) <= max_tokens:
+                            chunks.append(self._make_chunk(
+                                sub_content, full_path,
+                                module_name=module_name,
+                                source_file=source_file,
+                                tags=tags, version=version,
+                            ))
+                        else:
+                            # Fall back to fixed splitting within section
+                            chunks.extend(self._fixed_fallback(
+                                sub_content, full_path,
+                                module_name=module_name,
+                                source_file=source_file,
+                                tags=tags, version=version,
+                                max_tokens=max_tokens,
+                                overlap_tokens=overlap_tokens,
+                            ))
+                else:
+                    chunks.extend(self._fixed_fallback(
+                        section_content, section_path,
+                        module_name=module_name,
+                        source_file=source_file,
+                        tags=tags, version=version,
+                        max_tokens=max_tokens,
+                        overlap_tokens=overlap_tokens,
+                    ))
+
+        # Assign chunk indices
+        for i, chunk in enumerate(chunks):
+            chunk.metadata["chunk_index"] = i
+            chunk.metadata["total_chunks"] = len(chunks)
+
+        return chunks
+
+    def _split_at_level(
+        self, content: str, level: int
+    ) -> list[tuple[list[str], str]]:
+        """Split content at a given heading level. Returns (section_path, content) pairs."""
+        pattern = re.compile(rf"^(#{{{level}}})\s+(.+)$", re.MULTILINE)
+        matches = list(pattern.finditer(content))
+
+        if not matches:
+            return [([], content)]
+
+        sections: list[tuple[list[str], str]] = []
+
+        # Content before first heading
+        preamble = content[: matches[0].start()].strip()
+        if preamble:
+            sections.append(([], preamble))
+
+        for i, match in enumerate(matches):
+            heading_text = match.group(2).strip()
+            start = match.start()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+            section_content = content[start:end].strip()
+            sections.append(([heading_text], section_content))
+
+        return sections
+
+    def _make_chunk(
+        self,
+        content: str,
+        section_path: list[str],
+        *,
+        module_name: str,
+        source_file: str,
+        tags: list[str],
+        version: str,
+    ) -> Chunk:
+        file_stem = source_file.rsplit("/", 1)[-1].removesuffix(".md")
+        slug_parts = [file_stem] + [slugify(s) for s in section_path]
+        chunk_id = f"{module_name}/{'/'.join(slug_parts)}"
+
+        return Chunk(
+            id=chunk_id,
+            module=module_name,
+            source_file=source_file,
+            section_path=section_path,
+            content=content,
+            metadata={
+                "tags": tags,
+                "version": version,
+                "heading_level": len(section_path),
+                "parent_section": section_path[-2] if len(section_path) >= 2 else None,
+            },
+        )
+
+    def _fixed_fallback(
+        self,
+        content: str,
+        section_path: list[str],
+        *,
+        module_name: str,
+        source_file: str,
+        tags: list[str],
+        version: str,
+        max_tokens: int,
+        overlap_tokens: int,
+    ) -> list[Chunk]:
+        """Fall back to paragraph-aware fixed splitting for oversized sections."""
+        from ctx.chunker.fixed import FixedChunker
+
+        return FixedChunker().chunk(
+            content,
+            module_name=module_name,
+            source_file=source_file,
+            tags=tags,
+            version=version,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+            _section_path=section_path,
+        )

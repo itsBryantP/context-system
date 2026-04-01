@@ -1,0 +1,11 @@
+name: sample-module
+version: "1.0.0"
+description: A sample module for testing
+tags:
+  - test
+  - sample
+chunking:
+  strategy: heading
+  max_tokens: 500
+  overlap_tokens: 50
+  heading_level: 2
