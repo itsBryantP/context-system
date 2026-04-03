@@ -11,11 +11,13 @@ from ctx.pack import (
     ExtractedFile,
     ScanResult,
     build_strategy_map,
+    chunk_files,
     extract_files,
     infer_description,
     infer_name,
     infer_tags,
     kebab_case,
+    majority_strategy,
     scan_directory,
     select_strategy,
 )
@@ -747,3 +749,97 @@ class TestInferTags:
         ]
         tags = infer_tags(docs)
         assert "onlyh4" not in tags
+
+
+# ── chunk_files ───────────────────────────────────────────────────────────────
+
+
+class TestChunkFiles:
+    def _make_ef(self, tmp_path: Path, name: str, content: str, cls: str = "markdown") -> ExtractedFile:
+        orig = tmp_path / name
+        orig.write_text(content)
+        md = tmp_path / (name + ".md")
+        md.write_text(content)
+        return ExtractedFile(original_path=orig, md_path=md, classification=cls)
+
+    def test_returns_chunks_for_each_file(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_ef(tmp_path, "doc.md", "# Title\n\nSome content paragraph here.\n")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = chunk_files([ef], strategies, "my-module", [], input_dir=tmp_path)
+        assert len(chunks) >= 1
+
+    def test_source_file_is_relative_to_input_dir(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        orig = sub / "notes.txt"
+        orig.write_text("Some text.")
+        md = tmp_path / "notes.txt.md"
+        md.write_text("# notes\n\nSome text.")
+        ef = ExtractedFile(original_path=orig, md_path=md, classification="plaintext")
+        strategies = {ef.md_path: ChunkingStrategy.FIXED}
+        chunks = chunk_files([ef], strategies, "mod", [], input_dir=tmp_path)
+        assert all(c.source_file == "sub/notes.txt" for c in chunks)
+
+    def test_source_file_falls_back_to_name_when_no_input_dir(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_ef(tmp_path, "spec.pdf", "# Spec\n\nBody.")
+        strategies = {ef.md_path: ChunkingStrategy.FIXED}
+        chunks = chunk_files([ef], strategies, "mod", [], input_dir=None)
+        assert all(c.source_file == "spec.pdf" for c in chunks)
+
+    def test_tags_propagated_to_chunks(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_ef(tmp_path, "guide.md", "# Guide\n\nContent here.")
+        strategies = {ef.md_path: ChunkingStrategy.FIXED}
+        chunks = chunk_files([ef], strategies, "mod", ["api", "rest"], input_dir=tmp_path)
+        for c in chunks:
+            assert "api" in c.metadata.get("tags", [])
+
+    def test_module_name_in_chunk_id(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_ef(tmp_path, "overview.md", "# Overview\n\nBody.")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = chunk_files([ef], strategies, "my-module", [], input_dir=tmp_path)
+        assert all(c.id.startswith("my-module/") for c in chunks)
+
+    def test_empty_extracted_files_returns_empty(self, tmp_path):
+        chunks = chunk_files([], {}, "mod", [], input_dir=tmp_path)
+        assert chunks == []
+
+    def test_definition_strategy_used_for_glossary(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        content = "# Glossary\n\n**API**: Application interface.\n\n**SDK**: Dev kit.\n"
+        ef = self._make_ef(tmp_path, "glossary.md", content)
+        strategies = {ef.md_path: ChunkingStrategy.DEFINITION}
+        chunks = chunk_files([ef], strategies, "mod", [], input_dir=tmp_path)
+        assert len(chunks) >= 1
+
+
+# ── majority_strategy ─────────────────────────────────────────────────────────
+
+
+class TestMajorityStrategy:
+    def test_returns_most_common(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        a, b, c = tmp_path / "a", tmp_path / "b", tmp_path / "c"
+        strategies = {
+            a: ChunkingStrategy.HEADING,
+            b: ChunkingStrategy.HEADING,
+            c: ChunkingStrategy.FIXED,
+        }
+        assert majority_strategy(strategies) == ChunkingStrategy.HEADING
+
+    def test_empty_returns_heading(self):
+        from ctx.schema import ChunkingStrategy
+        assert majority_strategy({}) == ChunkingStrategy.HEADING
+
+    def test_single_entry(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        strategies = {tmp_path / "a": ChunkingStrategy.DEFINITION}
+        assert majority_strategy(strategies) == ChunkingStrategy.DEFINITION
+
+
+# ── write_module ──────────────────────────────────────────────────────────────
+

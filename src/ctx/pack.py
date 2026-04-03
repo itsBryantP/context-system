@@ -335,3 +335,76 @@ def _tokenize(text: str) -> list[str]:
     """Split heading/bold text into lowercase words, dropping stop words and short words."""
     words = re.findall(r"[a-zA-Z][a-zA-Z0-9]*", text.lower())
     return [w for w in words if len(w) >= 3 and w not in _STOP_WORDS]
+
+
+# ── Chunking ──────────────────────────────────────────────────────────────────
+
+
+def chunk_files(
+    extracted_files: list[ExtractedFile],
+    strategies: "dict[Path, ChunkingStrategy]",
+    module_name: str,
+    tags: list[str],
+    max_tokens: int = 500,
+    overlap: int = 50,
+    input_dir: Path | None = None,
+) -> "list[Chunk]":
+    """Chunk all extracted files using their assigned strategies.
+
+    source_file on each Chunk is the original input path relative to input_dir,
+    not the temp-extracted .md path.
+    """
+    from ctx.chunker.definition import DefinitionChunker  # noqa: PLC0415
+    from ctx.chunker.fixed import FixedChunker  # noqa: PLC0415
+    from ctx.chunker.heading import HeadingChunker  # noqa: PLC0415
+    from ctx.chunker.base import Chunk  # noqa: PLC0415
+    from ctx.schema import ChunkingStrategy  # noqa: PLC0415
+
+    _chunkers = {
+        ChunkingStrategy.HEADING: HeadingChunker(),
+        ChunkingStrategy.FIXED: FixedChunker(),
+        ChunkingStrategy.DEFINITION: DefinitionChunker(),
+    }
+
+    all_chunks: list[Chunk] = []
+    for ef in extracted_files:
+        strategy = strategies.get(ef.md_path, ChunkingStrategy.FIXED)
+        chunker = _chunkers[strategy]
+
+        if input_dir is not None:
+            try:
+                source_file = str(ef.original_path.relative_to(input_dir))
+            except ValueError:
+                source_file = ef.original_path.name
+        else:
+            source_file = ef.original_path.name
+
+        content = ef.md_path.read_text(encoding="utf-8", errors="replace")
+        chunks = chunker.chunk(
+            content,
+            module_name=module_name,
+            source_file=source_file,
+            tags=tags,
+            version="0.1.0",
+            max_tokens=max_tokens,
+            overlap_tokens=overlap,
+        )
+        all_chunks.extend(chunks)
+
+    return all_chunks
+
+
+def majority_strategy(strategies: "dict[Path, ChunkingStrategy]") -> "ChunkingStrategy":
+    """Return the most frequently used strategy. Ties broken by enum declaration order."""
+    from ctx.schema import ChunkingStrategy  # noqa: PLC0415
+
+    if not strategies:
+        return ChunkingStrategy.HEADING
+
+    counts: dict[ChunkingStrategy, int] = {}
+    for s in strategies.values():
+        counts[s] = counts.get(s, 0) + 1
+
+    return max(counts, key=lambda s: counts[s])
+
+
