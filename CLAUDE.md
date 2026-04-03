@@ -7,20 +7,20 @@
 1. **RAG pipelines** — chunked JSONL with structured metadata, ingestible by any vector store
 2. **AI coding tools** — native Claude Code integration (skills, rules, CLAUDE.md imports), extensible to Cursor, Copilot, etc.
 
-Full spec: `SPEC.md` | Implementation plan: `PLAN.md`
+Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 
 ---
 
-## Current State
+## Implementation Status
 
-**Phase 1 (Core MVP) is complete.** Phases 2–4 are not yet started.
+All four phases are complete. The project is feature-complete per the original spec.
 
-| Phase | Status | What |
-|-------|--------|------|
-| 1 — Core | Done | schema, config, module loader, chunkers (heading + fixed), JSONL writer, CLI |
-| 2 — Extractors | Done | PDF, PPTX, URL, Markdown → content/ ingestion; `ctx extract` and `ctx sync` CLI commands |
-| 3 — Claude Code integration | Done | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching, config registration |
-| 4 — Polish | Done | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
+| Phase | What was delivered |
+|-------|--------------------|
+| 1 — Core | schema, config, module loader, chunkers (heading + fixed), JSONL writer, CLI |
+| 2 — Extractors | PDF, PPTX, URL, Markdown → content/; `ctx extract` and `ctx sync` |
+| 3 — Claude Code | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching |
+| 4 — Polish | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
 
 ---
 
@@ -128,7 +128,7 @@ Modules declare `depends_on: [module-name@version]` in `module.yaml`. `ctx build
 Validated by `ModuleConfig` Pydantic model in `schema.py`. Required fields: `name`, `version`, `description`. Chunking defaults to `heading` strategy at H2 level, 500 max tokens, 50 overlap.
 
 ### Project Config (.context/config.yaml)
-Validated by `ProjectConfig`. References modules by local path only (MVP). JSONL output goes to `.context/chunks/` (gitignored in consuming projects).
+Validated by `ProjectConfig`. Modules referenced by `path:` (local) or `git:` (remote). JSONL output goes to `.context/chunks/` (gitignore in consuming projects).
 
 ### Adding a New Chunker
 1. Subclass `ChunkStrategy` in `chunker/base.py`
