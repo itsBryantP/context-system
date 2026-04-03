@@ -13,7 +13,7 @@ Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 
 ## Implementation Status
 
-All four phases are complete. The project is feature-complete per the original spec.
+All phases complete. The project is feature-complete per the original spec plus the `ctx pack` extension.
 
 | Phase | What was delivered |
 |-------|--------------------|
@@ -21,6 +21,7 @@ All four phases are complete. The project is feature-complete per the original s
 | 2 — Extractors | PDF, PPTX, URL, Markdown → content/; `ctx extract` and `ctx sync` |
 | 3 — Claude Code | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching |
 | 4 — Polish | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
+| 5 — Pack | `ctx pack` — zero-config packaging: scan, extract, auto-detect strategy/name/tags, chunk, output |
 
 ---
 
@@ -28,7 +29,8 @@ All four phases are complete. The project is feature-complete per the original s
 
 ```
 src/ctx/
-├── cli.py                  # Click CLI: init, create, build, chunks, list, validate, extract, sync
+├── cli.py                  # Click CLI: init, create, build, chunks, list, validate, extract, sync, pack
+├── pack.py                 # ctx pack pipeline: scan_directory, extract_files, select_strategy, infer_*, chunk_files, write_module, pack
 ├── schema.py               # Pydantic models for module.yaml and .context/config.yaml
 ├── config.py               # Load/save .context/config.yaml
 ├── module.py               # Module loading, validation, content file resolution
@@ -95,6 +97,10 @@ ctx add ./my-module --tool cursor --tool claude  # install for specific tools
 ctx remove my-module-name                   # remove module by name
 ctx extract spec.pdf --into ./my-module     # ingest a source file
 ctx sync ./my-module                        # re-extract all sources in module.yaml
+ctx pack ./my-docs/                         # zero-config: scan dir → JSONL stdout
+ctx pack ./my-docs/ -o ./my-module          # write a full module directory
+ctx pack ./my-docs/ --install               # install directly into project
+ctx pack ./my-docs/ -f text                 # human-readable chunk preview
 ```
 
 ---
@@ -143,6 +149,25 @@ def can_handle(self, source: Source) -> bool: ...
 def extract(self, source: Source, output_dir: Path) -> list[Path]: ...
 ```
 Add an instance to `_REGISTRY` in `extractors/__init__.py`. Order matters — first match wins.
+
+### ctx pack pipeline (`pack.py`)
+The pack pipeline is a pure-function chain — each step is independently testable:
+
+```
+scan_directory(input_dir)
+  → list[ScanResult]                       # classified file paths
+  → extract_files(results, input_dir, tmp) # → list[ExtractedFile], failures
+  → build_strategy_map(extracted)          # → dict[Path, ChunkingStrategy]
+  → infer_name / infer_description / infer_tags
+  → chunk_files(extracted, strategies, ...) # → list[Chunk]
+  → write_module / pack (output modes)
+```
+
+To support a new file type in `ctx pack`:
+1. Add the extension to `_EXT_MAP` in `pack.py` with a classification string
+2. Add a handler `_extract_<classification>(src, out) -> Path` in `pack.py`
+3. Wire it in `_extract_one()`
+4. Update `_CLS_TO_SOURCE_TYPE` if there's a matching `SourceType`
 
 ---
 

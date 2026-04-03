@@ -3,10 +3,14 @@
 A Python CLI for packaging knowledge into **portable context modules** — structured units that feed both RAG pipelines and AI coding tools from the same source of truth.
 
 ```
-ctx create api-patterns          # scaffold a module
-ctx extract spec.pdf --into ./api-patterns   # ingest a PDF
-ctx build                        # produce JSONL chunks
-ctx add ./api-patterns           # wire into Claude Code
+# Zero-config: point at any directory and get JSONL
+ctx pack ./my-docs/
+
+# Or the structured path: scaffold → extract → build → add
+ctx create api-patterns
+ctx extract spec.pdf --into ./api-patterns
+ctx build
+ctx add ./api-patterns
 ```
 
 ---
@@ -23,16 +27,30 @@ Most teams solve this by copy-pasting into system prompts, which doesn't scale, 
 
 ## Installation
 
-```bash
-pip install ctx-modules
+**One-step installer (recommended)** — installs uv if needed, then installs ctx with all extractors:
 
-# With optional extractors (PDF, PPTX, URL → markdown):
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/itsBryantP/context-system/main/install.sh)
+```
+
+Or from a local clone:
+
+```bash
+git clone https://github.com/itsBryantP/context-system.git
+cd context-system
+bash install.sh        # core + all extractors
+bash install.sh --dev  # also installs pytest
+```
+
+**Manual install:**
+
+```bash
 pip install "ctx-modules[extractors]"
 ```
 
 **Requirements:** Python 3.11+, `git` on PATH (for git URL modules)
 
-For PDF extraction, also install poppler:
+For best PDF quality, also install poppler (PyMuPDF works without it):
 ```bash
 brew install poppler          # macOS
 apt-get install poppler-utils # Linux
@@ -46,9 +64,17 @@ apt-get install poppler-utils # Linux
 
 **Chunk** — a semantically meaningful slice of content with a deterministic ID, token count, and metadata. The atom of RAG retrieval.
 
+**Two workflows:**
+
+| | `ctx pack` | `ctx create` / `ctx build` |
+|---|---|---|
+| Setup | Zero — point at any directory | Author `module.yaml` + `content/` |
+| Best for | Quick ingestion of existing files | Curated, versioned modules |
+| Output | JSONL, module dir, or direct install | Same |
+
 **Two consumption paths:**
-1. `ctx build` → `.context/chunks/*.jsonl` — pipe to any vector store
-2. `ctx add` → `.claude/skills/`, `.claude/rules/`, CLAUDE.md imports — native Claude Code integration
+1. `ctx build` / `ctx pack` → `.context/chunks/*.jsonl` — pipe to any vector store
+2. `ctx add` / `ctx pack --install` → `.claude/skills/`, `.claude/rules/`, CLAUDE.md imports — native Claude Code integration
 
 ---
 
@@ -72,6 +98,119 @@ ctx build
 
 # 5. Stream chunks to stdout (pipe anywhere)
 ctx chunks ~/api-patterns | head -5
+```
+
+---
+
+## ctx pack — Zero-Config Packaging
+
+`ctx pack` turns any directory of mixed files into a ready-to-use context module in one command. No `module.yaml`, no `content/` structure, no configuration required.
+
+### What it handles
+
+| File type | How it's processed |
+|-----------|-------------------|
+| `.md`, `.markdown` | Frontmatter stripped, body passed through |
+| `.txt` | Filename becomes `# heading`, content follows |
+| `.pdf` | pdftotext (poppler) → PyMuPDF fallback → markdown |
+| `.pptx`, `.ppt` | Slides → `## Slide N`, speaker notes → blockquotes |
+| `.html`, `.htm` | Converted via markdownify |
+| `.yaml`, `.yml`, `.json` | Wrapped in a fenced code block with filename as heading |
+| Everything else | Skipped with a warning |
+
+Subdirectories are scanned recursively. Hidden directories (`.git`, `_private`) are ignored.
+
+### Output modes
+
+**Stream JSONL to stdout** (default — pipe anywhere):
+
+```bash
+ctx pack ./my-docs/
+# Scanned 8 files: 7 supported, 1 skipped
+# Extracted 7 files
+# Chunked into 34 chunks from 7 files
+# {"id": "my-docs/overview/introduction", "content": "...", ...}
+# {"id": "my-docs/overview/authentication", "content": "...", ...}
+# ...
+```
+
+**Human-readable preview:**
+
+```bash
+ctx pack ./my-docs/ -f text
+# --- [my-docs/overview/introduction] (218 tokens) ---
+# ## Introduction
+# ...
+```
+
+**Write a reusable module directory** (`-o`):
+
+```bash
+ctx pack ./my-docs/ -o ./my-docs-module
+```
+
+Produces a standard module you can version, share, and use with all other `ctx` commands:
+
+```
+my-docs-module/
+├── module.yaml          # auto-detected name, description, tags, strategy, sources
+├── content/             # extracted markdown files
+│   ├── overview.md
+│   ├── spec.md
+│   └── notes.md
+└── chunks/
+    └── my-docs.jsonl    # pre-built JSONL
+```
+
+**Install directly into the current project** (`--install`):
+
+```bash
+ctx pack ./my-docs/ --install
+# Writes to .context/packed/my-docs/
+# Wires into CLAUDE.md and .context/config.yaml automatically
+```
+
+### Auto-detection
+
+When no flags are given, `ctx pack` infers everything from the content:
+
+| What | How |
+|------|-----|
+| **Name** | kebab-case of the directory name |
+| **Description** | Text of the first `# H1` heading found across all files |
+| **Tags** | Terms from headings and `**bold**` spans that appear in 2+ files |
+| **Strategy** | Per-file heuristic: bold-def density → `definition`; H2 count → `heading`; otherwise → `fixed` |
+
+### Override anything
+
+```bash
+ctx pack ./my-docs/ \
+  --name api-reference \
+  --description "Internal API reference docs" \
+  --tags "api,rest,auth" \
+  --strategy heading \
+  --max-tokens 400 \
+  --overlap 75 \
+  -o ./api-reference-module
+```
+
+### Full example
+
+```bash
+# A directory with mixed content
+ls ./project-docs/
+# overview.md  api-spec.pdf  glossary.md  config.yaml  slides.pptx  notes.txt
+
+# Preview what you'd get
+ctx pack ./project-docs/ -f text | head -30
+
+# Write a module, inspect it
+ctx pack ./project-docs/ -o ./project-context
+cat ./project-context/module.yaml
+
+# Install and use immediately in this project
+ctx pack ./project-docs/ --install
+ctx build
 ```
 
 ---
@@ -566,6 +705,47 @@ ctx build
 
 ## CLI Reference
 
+### `ctx pack <directory>`
+
+Pack a directory of mixed files into a context module in one step. No setup required.
+
+```bash
+# Stream JSONL to stdout
+ctx pack ./my-docs/
+
+# Human-readable output
+ctx pack ./my-docs/ -f text
+
+# Write a module directory
+ctx pack ./my-docs/ -o ./my-module
+
+# Install into the current project
+ctx pack ./my-docs/ --install
+
+# Override auto-detected metadata
+ctx pack ./my-docs/ \
+  --name my-module \
+  --description "My knowledge base" \
+  --tags "api,auth" \
+  --strategy heading \
+  --max-tokens 400 \
+  --overlap 75 \
+  -o ./my-module
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--name`, `-n` | directory name (kebab-cased) | Module name |
+| `--description`, `-d` | first H1 heading | One-line description |
+| `--tags`, `-t` | auto-detected | Comma-separated tags |
+| `--strategy`, `-s` | per-file heuristic | Force `heading`, `fixed`, or `definition` for all files |
+| `--max-tokens` | `500` | Max tokens per chunk |
+| `--overlap` | `50` | Overlap tokens between chunks |
+| `--output`, `-o` | — | Write module directory here (errors if path exists) |
+| `--install` | `false` | Install to `.context/packed/<name>/` and register in config |
+| `--format`, `-f` | `jsonl` | Stdout format: `jsonl` or `text` |
+| `--project`, `-p` | `.` | Project root (used with `--install`) |
+
 ### `ctx init [path]`
 
 Initialize `.context/config.yaml` in the project root.
@@ -773,19 +953,21 @@ uv pip install -e ".[dev,extractors]"
 ### Tests
 
 ```bash
-uv run pytest                    # all tests (115)
+uv run pytest                    # all tests (224)
 uv run pytest tests/test_chunker.py -v
 uv run pytest -k "definition"    # filter by name
+uv run pytest tests/test_pack.py # pack-specific tests
 ```
 
 ### Project structure
 
 ```
 src/ctx/
-├── cli.py             # Click entry points
+├── cli.py             # Click entry points (init, create, build, chunks, pack, ...)
 ├── schema.py          # Pydantic models (ModuleConfig, ProjectConfig, ModuleRef)
 ├── config.py          # .context/config.yaml load/save
 ├── module.py          # load_module, validate_module, resolve_module_ref
+├── pack.py            # ctx pack pipeline: scan, extract, strategy, infer, chunk, output
 ├── deps.py            # dependency resolution
 ├── freshness.py       # build metadata and hash-based skip logic
 ├── git.py             # git clone/cache for git: module refs
