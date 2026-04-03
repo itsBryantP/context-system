@@ -408,3 +408,212 @@ def majority_strategy(strategies: "dict[Path, ChunkingStrategy]") -> "ChunkingSt
     return max(counts, key=lambda s: counts[s])
 
 
+# ── Module output ─────────────────────────────────────────────────────────────
+
+_CLS_TO_SOURCE_TYPE: dict[str, str] = {
+    "markdown": "markdown",
+    "plaintext": "markdown",
+    "html": "markdown",
+    "structured": "markdown",
+    "pdf": "pdf",
+    "pptx": "pptx",
+}
+
+
+def write_module(
+    output_path: Path,
+    name: str,
+    description: str,
+    tags: list[str],
+    extracted_files: list[ExtractedFile],
+    strategies: "dict[Path, ChunkingStrategy]",
+    chunks: "list[Chunk]",
+    max_tokens: int,
+    overlap: int,
+) -> None:
+    """Write a complete module directory to output_path.
+
+    Layout:
+        output_path/
+            module.yaml          — auto-detected config + sources + overrides
+            content/             — extracted .md files
+            chunks/<name>.jsonl  — pre-built JSONL
+    """
+    import yaml  # noqa: PLC0415
+    from ctx.schema import (  # noqa: PLC0415
+        ChunkingConfig,
+        ChunkingOverride,
+        ModuleConfig,
+        Source,
+        SourceType,
+    )
+    from ctx.integrations.jsonl import write_jsonl  # noqa: PLC0415
+
+    if output_path.exists():
+        raise FileExistsError(f"Output path already exists: {output_path}")
+
+    dom = majority_strategy(strategies)
+
+    overrides: list[ChunkingOverride] = []
+    for ef in extracted_files:
+        file_strategy = strategies.get(ef.md_path)
+        if file_strategy is not None and file_strategy != dom:
+            overrides.append(ChunkingOverride(
+                pattern=f"content/{ef.md_path.name}",
+                strategy=file_strategy,
+            ))
+
+    sources = [
+        Source(
+            type=SourceType(_CLS_TO_SOURCE_TYPE.get(ef.classification, "markdown")),
+            path=str(ef.original_path),
+        )
+        for ef in extracted_files
+    ]
+
+    chunking = ChunkingConfig(
+        strategy=dom,
+        max_tokens=max_tokens,
+        overlap_tokens=overlap,
+        overrides=overrides,
+    )
+    mod = ModuleConfig(
+        name=name,
+        description=description,
+        tags=tags,
+        sources=sources,
+        chunking=chunking,
+    )
+
+    output_path.mkdir(parents=True)
+    content_dir = output_path / "content"
+    content_dir.mkdir()
+
+    for ef in extracted_files:
+        dest = content_dir / ef.md_path.name
+        dest.write_text(ef.md_path.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+
+    yaml_data = mod.model_dump(mode="json", exclude_defaults=False)
+    (output_path / "module.yaml").write_text(
+        yaml.dump(yaml_data, default_flow_style=False, sort_keys=False)
+    )
+
+    write_jsonl(chunks, output_path / "chunks" / f"{name}.jsonl")
+
+
+# ── Orchestrator ──────────────────────────────────────────────────────────────
+
+
+def pack(
+    input_dir: Path,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    tags: str | None = None,
+    strategy: str | None = None,
+    max_tokens: int = 500,
+    overlap: int = 50,
+    output: Path | None = None,
+    install: bool = False,
+    fmt: str = "jsonl",
+    project_root: Path | None = None,
+) -> "list[Chunk]":
+    """Run the full pack pipeline on input_dir.
+
+    Progress messages go to stderr. Chunk output (stdout/text mode) goes to stdout.
+    Returns the list of Chunk objects produced.
+    """
+    import tempfile  # noqa: PLC0415
+
+    import click  # noqa: PLC0415
+
+    from ctx.chunker.base import Chunk  # noqa: PLC0415
+    from ctx.integrations.jsonl import chunks_to_jsonl  # noqa: PLC0415
+    from ctx.schema import ChunkingStrategy  # noqa: PLC0415
+
+    # 1. Scan
+    scan_results = scan_directory(input_dir)
+    supported = [r for r in scan_results if r.classification != "unsupported"]
+    skipped_count = len(scan_results) - len(supported)
+    click.echo(
+        f"Scanned {len(scan_results)} files: {len(supported)} supported, "
+        f"{skipped_count} skipped",
+        err=True,
+    )
+
+    with tempfile.TemporaryDirectory() as _tmp:
+        tmp_dir = Path(_tmp)
+
+        # 2. Extract
+        extracted, failures = extract_files(scan_results, input_dir, tmp_dir)
+        for path, reason in failures:
+            click.echo(f"  Warning: skipped {path.name}: {reason}", err=True)
+        click.echo(
+            f"Extracted {len(extracted)} files"
+            + (f" ({len(failures)} failed)" if failures else ""),
+            err=True,
+        )
+
+        # 3. Infer metadata
+        md_contents = [
+            ef.md_path.read_text(encoding="utf-8", errors="replace")
+            for ef in extracted
+        ]
+        mod_name = infer_name(input_dir, override=name)
+        mod_description = description or infer_description(md_contents, input_dir.name)
+        mod_tags = infer_tags(md_contents, override=tags)
+
+        # 4. Strategy selection
+        override_strategy = ChunkingStrategy(strategy) if strategy else None
+        strategies = build_strategy_map(extracted, max_tokens=max_tokens, override=override_strategy)
+
+        # 5. Chunk
+        all_chunks: list[Chunk] = chunk_files(
+            extracted, strategies, mod_name, mod_tags,
+            max_tokens=max_tokens, overlap=overlap, input_dir=input_dir,
+        )
+        click.echo(
+            f"Chunked into {len(all_chunks)} chunks from {len(extracted)} files",
+            err=True,
+        )
+
+        # 6. Output
+        if output is not None:
+            write_module(
+                output, mod_name, mod_description, mod_tags,
+                extracted, strategies, all_chunks, max_tokens, overlap,
+            )
+            click.echo(f"Module written to {output}", err=True)
+
+        elif install:
+            _project_root = project_root or Path.cwd()
+            packed_dir = _project_root / ".context" / "packed" / mod_name
+            write_module(
+                packed_dir, mod_name, mod_description, mod_tags,
+                extracted, strategies, all_chunks, max_tokens, overlap,
+            )
+            from ctx.integrations.claude_code import install_module  # noqa: PLC0415
+            from ctx.config import load_config, save_config  # noqa: PLC0415
+            from ctx.schema import ModuleRef  # noqa: PLC0415
+
+            install_module(packed_dir, _project_root)
+            config = load_config(_project_root)
+            ref_path = str(packed_dir)
+            if not any(m.path == ref_path for m in config.modules):
+                config.modules.append(ModuleRef(path=ref_path))
+                save_config(_project_root, config)
+            click.echo(f"Installed module '{mod_name}' at {packed_dir}", err=True)
+
+        else:
+            if fmt == "jsonl":
+                click.echo(chunks_to_jsonl(all_chunks), nl=False)
+            else:
+                for chunk in all_chunks:
+                    click.echo(
+                        f"--- [{chunk.id}] "
+                        f"({chunk.metadata.get('token_count', '?')} tokens) ---"
+                    )
+                    click.echo(chunk.content)
+                    click.echo()
+
+        return all_chunks

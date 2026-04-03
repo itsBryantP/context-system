@@ -18,8 +18,10 @@ from ctx.pack import (
     infer_tags,
     kebab_case,
     majority_strategy,
+    pack,
     scan_directory,
     select_strategy,
+    write_module,
 )
 
 
@@ -843,3 +845,308 @@ class TestMajorityStrategy:
 
 # ── write_module ──────────────────────────────────────────────────────────────
 
+
+class TestWriteModule:
+    def _make_extracted(self, tmp_path: Path, name: str, content: str, cls: str = "markdown") -> ExtractedFile:
+        orig = tmp_path / "src" / name
+        orig.parent.mkdir(exist_ok=True)
+        orig.write_text(content)
+        md = tmp_path / "tmp" / (name + ".extracted.md")
+        md.parent.mkdir(exist_ok=True)
+        md.write_text(content)
+        return ExtractedFile(original_path=orig, md_path=md, classification=cls)
+
+    def _make_chunks(self, extracted, strategies, module_name="mod", tmp_path=None):
+        src_dir = tmp_path / "src" if tmp_path else Path(".")
+        return chunk_files(extracted, strategies, module_name, [], input_dir=src_dir)
+
+    def test_creates_module_yaml(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "doc.md", "# Doc\n\nBody.", "markdown")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = self._make_chunks([ef], strategies, tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "my-mod", "A module", [], [ef], strategies, chunks, 500, 50)
+        assert (out / "module.yaml").exists()
+
+    def test_creates_content_dir_with_md_files(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "guide.md", "# Guide\n\nContent.", "markdown")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = self._make_chunks([ef], strategies, tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "mod", "desc", [], [ef], strategies, chunks, 500, 50)
+        assert (out / "content").is_dir()
+        assert len(list((out / "content").glob("*.md"))) == 1
+
+    def test_creates_chunks_jsonl(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "api.md", "# API\n\nEndpoints.", "markdown")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = self._make_chunks([ef], strategies, module_name="my-api", tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "my-api", "desc", [], [ef], strategies, chunks, 500, 50)
+        jsonl_path = out / "chunks" / "my-api.jsonl"
+        assert jsonl_path.exists()
+
+    def test_module_yaml_has_correct_name_and_description(self, tmp_path):
+        import yaml as _yaml
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "doc.md", "# Doc\n\nBody.", "markdown")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = self._make_chunks([ef], strategies, tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "test-mod", "My description", ["api"], [ef], strategies, chunks, 500, 50)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["name"] == "test-mod"
+        assert data["description"] == "My description"
+        assert data["tags"] == ["api"]
+
+    def test_module_yaml_majority_strategy(self, tmp_path):
+        import yaml as _yaml
+        from ctx.schema import ChunkingStrategy
+        ef1 = self._make_extracted(tmp_path, "a.md", "# A\n\nBody.", "markdown")
+        ef2 = self._make_extracted(tmp_path, "b.md", "# B\n\nBody.", "markdown")
+        ef3 = self._make_extracted(tmp_path, "c.md", "# C\n\nBody.", "markdown")
+        strategies = {
+            ef1.md_path: ChunkingStrategy.HEADING,
+            ef2.md_path: ChunkingStrategy.HEADING,
+            ef3.md_path: ChunkingStrategy.FIXED,
+        }
+        chunks = self._make_chunks([ef1, ef2, ef3], strategies, tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "mod", "desc", [], [ef1, ef2, ef3], strategies, chunks, 500, 50)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["chunking"]["strategy"] == "heading"
+
+    def test_module_yaml_overrides_for_minority_strategy(self, tmp_path):
+        import yaml as _yaml
+        from ctx.schema import ChunkingStrategy
+        ef1 = self._make_extracted(tmp_path, "a.md", "# A\n\nBody.", "markdown")
+        ef2 = self._make_extracted(tmp_path, "b.md", "# B\n\nBody.", "markdown")
+        strategies = {
+            ef1.md_path: ChunkingStrategy.HEADING,
+            ef2.md_path: ChunkingStrategy.FIXED,
+        }
+        chunks = self._make_chunks([ef1, ef2], strategies, tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "mod", "desc", [], [ef1, ef2], strategies, chunks, 500, 50)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        overrides = data["chunking"].get("overrides", [])
+        assert len(overrides) >= 1
+
+    def test_raises_if_output_path_exists(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        out = tmp_path / "output"
+        out.mkdir()
+        ef = self._make_extracted(tmp_path, "doc.md", "# D\n\nB.", "markdown")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = self._make_chunks([ef], strategies, tmp_path=tmp_path)
+        with pytest.raises(FileExistsError):
+            write_module(out, "mod", "desc", [], [ef], strategies, chunks, 500, 50)
+
+    def test_sources_list_populated(self, tmp_path):
+        import yaml as _yaml
+        from ctx.schema import ChunkingStrategy
+        ef_md = self._make_extracted(tmp_path, "guide.md", "# G\n\nB.", "markdown")
+        ef_pdf = self._make_extracted(tmp_path, "spec.pdf", "# S\n\nB.", "pdf")
+        strategies = {
+            ef_md.md_path: ChunkingStrategy.HEADING,
+            ef_pdf.md_path: ChunkingStrategy.HEADING,
+        }
+        chunks = self._make_chunks([ef_md, ef_pdf], strategies, tmp_path=tmp_path)
+        out = tmp_path / "output"
+        write_module(out, "mod", "desc", [], [ef_md, ef_pdf], strategies, chunks, 500, 50)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        source_types = {s["type"] for s in data.get("sources", [])}
+        assert "pdf" in source_types
+        assert "markdown" in source_types
+
+
+# ── pack orchestrator ─────────────────────────────────────────────────────────
+
+
+class TestPack:
+    def _setup_dir(self, tmp_path: Path) -> Path:
+        d = tmp_path / "input"
+        d.mkdir()
+        (d / "overview.md").write_text("# Overview\n\nSome content about APIs.\n\n## Authentication\n\nUse tokens.\n")
+        (d / "notes.txt").write_text("Plain text meeting notes here.\n")
+        (d / "config.json").write_text('{"host": "localhost"}\n')
+        return d
+
+    def test_stdout_mode_produces_jsonl(self, tmp_path, capsys):
+        d = self._setup_dir(tmp_path)
+        chunks = pack(d, fmt="jsonl")
+        captured = capsys.readouterr()
+        assert len(chunks) >= 1
+        # Each stdout line is valid JSON
+        lines = [l for l in captured.out.strip().splitlines() if l.strip()]
+        import json
+        for line in lines:
+            obj = json.loads(line)
+            assert "id" in obj
+            assert "content" in obj
+
+    def test_stdout_mode_text_format(self, tmp_path, capsys):
+        d = self._setup_dir(tmp_path)
+        pack(d, fmt="text")
+        captured = capsys.readouterr()
+        assert "---" in captured.out
+        assert "tokens" in captured.out
+
+    def test_output_mode_creates_module_dir(self, tmp_path):
+        d = self._setup_dir(tmp_path)
+        out = tmp_path / "my-module"
+        pack(d, output=out)
+        assert (out / "module.yaml").exists()
+        assert (out / "content").is_dir()
+        assert list((out / "chunks").glob("*.jsonl"))
+
+    def test_output_mode_auto_detects_name_from_dir(self, tmp_path):
+        import yaml as _yaml
+        d = tmp_path / "api_reference"
+        d.mkdir()
+        (d / "guide.md").write_text("# Guide\n\nContent.\n")
+        (d / "index.md").write_text("# Index\n\nContent.\n")
+        out = tmp_path / "output"
+        pack(d, output=out)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["name"] == "api-reference"
+
+    def test_output_mode_name_override(self, tmp_path):
+        import yaml as _yaml
+        d = self._setup_dir(tmp_path)
+        out = tmp_path / "output"
+        pack(d, name="custom-name", output=out)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["name"] == "custom-name"
+
+    def test_output_mode_description_override(self, tmp_path):
+        import yaml as _yaml
+        d = self._setup_dir(tmp_path)
+        out = tmp_path / "output"
+        pack(d, description="My custom description", output=out)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["description"] == "My custom description"
+
+    def test_output_mode_tags_override(self, tmp_path):
+        import yaml as _yaml
+        d = self._setup_dir(tmp_path)
+        out = tmp_path / "output"
+        pack(d, tags="api,auth,rest", output=out)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["tags"] == ["api", "auth", "rest"]
+
+    def test_strategy_override_forces_all_files(self, tmp_path):
+        import yaml as _yaml
+        d = self._setup_dir(tmp_path)
+        out = tmp_path / "output"
+        pack(d, strategy="fixed", output=out)
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["chunking"]["strategy"] == "fixed"
+
+    def test_empty_dir_returns_no_chunks(self, tmp_path):
+        d = tmp_path / "empty"
+        d.mkdir()
+        chunks = pack(d)
+        assert chunks == []
+
+    def test_unsupported_only_dir_returns_no_chunks(self, tmp_path):
+        d = tmp_path / "images"
+        d.mkdir()
+        (d / "photo.png").write_text("fake")
+        (d / "diagram.svg").write_text("fake")
+        chunks = pack(d)
+        assert chunks == []
+
+    def test_install_mode_writes_to_packed_dir(self, tmp_path):
+        d = self._setup_dir(tmp_path)
+        project = tmp_path / "project"
+        project.mkdir()
+        pack(d, install=True, project_root=project)
+        packed_base = project / ".context" / "packed"
+        assert packed_base.is_dir()
+        subdirs = list(packed_base.iterdir())
+        assert len(subdirs) == 1
+        assert (subdirs[0] / "module.yaml").exists()
+
+    def test_install_mode_adds_to_config_yaml(self, tmp_path):
+        import yaml as _yaml
+        d = self._setup_dir(tmp_path)
+        project = tmp_path / "project"
+        project.mkdir()
+        pack(d, install=True, project_root=project)
+        config_path = project / ".context" / "config.yaml"
+        assert config_path.exists()
+        data = _yaml.safe_load(config_path.read_text())
+        assert any(m.get("path") for m in data.get("modules", []))
+
+
+# ── CLI integration ───────────────────────────────────────────────────────────
+
+
+class TestPackCLI:
+    def test_cli_stdout_jsonl(self, tmp_path):
+        import json
+        from click.testing import CliRunner
+        from ctx.cli import cli
+
+        d = tmp_path / "input"
+        d.mkdir()
+        (d / "readme.md").write_text("# Readme\n\nContent.\n")
+
+        runner = CliRunner(mix_stderr=False)
+        result = runner.invoke(cli, ["pack", str(d)])
+        assert result.exit_code == 0, result.output
+        lines = [l for l in result.output.strip().splitlines() if l.strip()]
+        assert lines
+        obj = json.loads(lines[0])
+        assert "id" in obj
+
+    def test_cli_output_flag(self, tmp_path):
+        from click.testing import CliRunner
+        from ctx.cli import cli
+
+        d = tmp_path / "input"
+        d.mkdir()
+        (d / "guide.md").write_text("# Guide\n\nContent.\n")
+        out = tmp_path / "module-out"
+
+        runner = CliRunner(mix_stderr=False)
+        result = runner.invoke(cli, ["pack", str(d), "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        assert (out / "module.yaml").exists()
+
+    def test_cli_text_format(self, tmp_path):
+        from click.testing import CliRunner
+        from ctx.cli import cli
+
+        d = tmp_path / "input"
+        d.mkdir()
+        (d / "doc.md").write_text("# Doc\n\nSome content here.\n")
+
+        runner = CliRunner(mix_stderr=False)
+        result = runner.invoke(cli, ["pack", str(d), "-f", "text"])
+        assert result.exit_code == 0, result.output
+        assert "---" in result.output
+
+    def test_cli_name_and_description_flags(self, tmp_path):
+        import yaml as _yaml
+        from click.testing import CliRunner
+        from ctx.cli import cli
+
+        d = tmp_path / "input"
+        d.mkdir()
+        (d / "doc.md").write_text("# Doc\n\nContent.\n")
+        out = tmp_path / "output"
+
+        runner = CliRunner(mix_stderr=False)
+        result = runner.invoke(cli, [
+            "pack", str(d), "-o", str(out),
+            "-n", "my-module", "-d", "Custom description",
+        ])
+        assert result.exit_code == 0, result.output
+        data = _yaml.safe_load((out / "module.yaml").read_text())
+        assert data["name"] == "my-module"
+        assert data["description"] == "Custom description"

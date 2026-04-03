@@ -338,6 +338,52 @@ def _module_name_matches(ref: ModuleRef, target_name: str, project_root: Path) -
 
 
 @cli.command()
+@click.argument("directory", type=click.Path(exists=True, file_okay=False))
+@click.option("--name", "-n", default=None, help="Module name (default: directory name)")
+@click.option("--description", "-d", default=None, help="Module description (default: auto-detected from first H1)")
+@click.option("--tags", "-t", default=None, help="Comma-separated tags (default: auto-detected)")
+@click.option("--strategy", "-s", default=None,
+              type=click.Choice(["heading", "fixed", "definition"]),
+              help="Force a single chunking strategy for all files")
+@click.option("--max-tokens", default=500, show_default=True, help="Max tokens per chunk")
+@click.option("--overlap", default=50, show_default=True, help="Overlap tokens between chunks")
+@click.option("--output", "-o", default=None, type=click.Path(), help="Write a module directory here")
+@click.option("--install", is_flag=True, help="Install into .context/packed/ and register in config")
+@click.option("--format", "-f", "fmt", default="jsonl",
+              type=click.Choice(["jsonl", "text"]),
+              help="Output format when writing to stdout")
+@click.option("--project", "-p", default=".", type=click.Path(exists=True),
+              help="Project root (for --install)")
+def pack(directory, name, description, tags, strategy, max_tokens, overlap, output, install, fmt, project):
+    """Pack a directory of mixed files into a context module in one step.
+
+    Scans DIRECTORY, extracts all supported file types to markdown, auto-selects
+    chunking strategies, and outputs JSONL (default), a module directory (-o), or
+    installs directly into the current project (--install).
+    """
+    from ctx.pack import pack as _pack
+    from pathlib import Path
+
+    input_dir = Path(directory).resolve()
+    output_path = Path(output).resolve() if output else None
+    project_root = Path(project).resolve()
+
+    _pack(
+        input_dir,
+        name=name,
+        description=description,
+        tags=tags,
+        strategy=strategy,
+        max_tokens=max_tokens,
+        overlap=overlap,
+        output=output_path,
+        install=install,
+        fmt=fmt,
+        project_root=project_root,
+    )
+
+
+@cli.command()
 @click.argument("module_path", type=click.Path(exists=True))
 def validate(module_path):
     """Validate a module directory."""
