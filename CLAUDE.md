@@ -19,7 +19,7 @@ Full spec: `SPEC.md` | Implementation plan: `PLAN.md`
 |-------|--------|------|
 | 1 — Core | Done | schema, config, module loader, chunkers (heading + fixed), JSONL writer, CLI |
 | 2 — Extractors | Done | PDF, PPTX, URL, Markdown → content/ ingestion; `ctx extract` and `ctx sync` CLI commands |
-| 3 — Claude Code integration | Not started | `ctx add` / `ctx remove` symlink management |
+| 3 — Claude Code integration | Done | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching, config registration |
 | 4 — Polish | Not started | definition chunker, dependency resolution, git URLs |
 
 ---
@@ -45,10 +45,11 @@ src/ctx/
 │   └── url.py              # urllib fetch + markdownify; stores fetched_at frontmatter
 └── integrations/
     ├── jsonl.py            # JSONL serialization and file writing
-    └── __init__.py         # Phase 3 — claude_code.py goes here
+    └── claude_code.py      # install_module / remove_module — symlinks + CLAUDE.md patching
 tests/
 ├── test_chunker.py
 ├── test_extractors.py
+├── test_claude_code.py
 ├── test_module.py
 └── fixtures/sample-module/ # Minimal valid module for testing
 ```

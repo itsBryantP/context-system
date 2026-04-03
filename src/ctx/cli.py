@@ -1,4 +1,4 @@
-"""CLI: init, create, build, chunks, list."""
+"""CLI: init, create, build, chunks, list, extract, sync, add, remove."""
 
 from __future__ import annotations
 
@@ -221,6 +221,72 @@ def sync(module_path):
             total += 1
 
     click.echo(f"Synced {total} file(s) for {mod.name}")
+
+
+@cli.command()
+@click.argument("module_path", type=click.Path(exists=True))
+@click.option("--project", "-p", default=".", type=click.Path(exists=True), help="Project root")
+def add(module_path, project):
+    """Install a module's skills, rules, and CLAUDE.md into this project."""
+    from ctx.integrations.claude_code import install_module
+
+    mod_path = Path(module_path).resolve()
+    project_root = Path(project).resolve()
+
+    issues = validate_module(mod_path)
+    if issues:
+        raise click.ClickException(f"Invalid module: {'; '.join(issues)}")
+
+    result = install_module(mod_path, project_root)
+
+    # Record in .context/config.yaml
+    config = load_config(project_root)
+    ref_path = str(mod_path)
+    if not any(m.path == ref_path for m in config.modules):
+        config.modules.append(ModuleRef(path=ref_path))
+        save_config(project_root, config)
+
+    for name in result.skills:
+        click.echo(f"  skill   → .claude/skills/{name}")
+    for name in result.rules:
+        click.echo(f"  rule    → .claude/rules/{name}")
+    if result.claude_md_patched:
+        click.echo(f"  CLAUDE.md patched with @import")
+
+    click.echo(f"Added {result.module_name}")
+
+
+@cli.command()
+@click.argument("module_name")
+@click.option("--project", "-p", default=".", type=click.Path(exists=True), help="Project root")
+def remove(module_name, project):
+    """Remove a module's skills, rules, and CLAUDE.md import from this project."""
+    from ctx.integrations.claude_code import remove_module
+
+    project_root = Path(project).resolve()
+    config = load_config(project_root)
+
+    ref = next((m for m in config.modules if Path(m.path).name == module_name or
+                load_module(resolve_module_path(m.path, project_root)).name == module_name
+                ), None)
+    if ref is None:
+        raise click.ClickException(f"Module '{module_name}' not found in .context/config.yaml")
+
+    mod_path = resolve_module_path(ref.path, project_root)
+    result = remove_module(mod_path, project_root)
+
+    # Remove from config
+    config.modules = [m for m in config.modules if m.path != ref.path]
+    save_config(project_root, config)
+
+    for name in result.skills_removed:
+        click.echo(f"  removed skill   .claude/skills/{name}")
+    for name in result.rules_removed:
+        click.echo(f"  removed rule    .claude/rules/{name}")
+    if result.claude_md_patched:
+        click.echo(f"  CLAUDE.md import removed")
+
+    click.echo(f"Removed {result.module_name}")
 
 
 @cli.command()
