@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChunkingStrategy(str, Enum):
@@ -70,7 +70,16 @@ class ModuleConfig(BaseModel):
 
 
 class ModuleRef(BaseModel):
-    path: str
+    path: Optional[str] = None
+    git: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check_one_source(self) -> "ModuleRef":
+        if self.path is None and self.git is None:
+            raise ValueError("ModuleRef requires either 'path' or 'git'")
+        if self.path is not None and self.git is not None:
+            raise ValueError("ModuleRef cannot specify both 'path' and 'git'")
+        return self
 
 
 class ChunkDefaults(BaseModel):

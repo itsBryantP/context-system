@@ -1,4 +1,4 @@
-"""Load, validate, and resolve modules from local paths."""
+"""Load, validate, and resolve modules from local paths or git URLs."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from ctx.schema import ModuleConfig
+from ctx.schema import ModuleConfig, ModuleRef
 
 
 def load_module(module_path: Path) -> ModuleConfig:
@@ -28,11 +28,19 @@ def get_content_files(module_path: Path) -> list[Path]:
 
 
 def resolve_module_path(path_str: str, project_root: Path) -> Path:
-    """Resolve a module path (absolute or relative to project root)."""
+    """Resolve a local module path (absolute or relative to project root)."""
     path = Path(path_str).expanduser()
     if path.is_absolute():
         return path.resolve()
     return (project_root / path).resolve()
+
+
+def resolve_module_ref(ref: ModuleRef, project_root: Path) -> Path:
+    """Resolve a ModuleRef to a local path, cloning from git if necessary."""
+    if ref.git:
+        from ctx.git import resolve_git_module
+        return resolve_git_module(ref.git)
+    return resolve_module_path(ref.path, project_root)  # type: ignore[arg-type]
 
 
 def validate_module(module_path: Path) -> list[str]:

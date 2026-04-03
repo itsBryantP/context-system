@@ -1,4 +1,4 @@
-"""CLI: init, create, build, chunks, list, extract, sync, add, remove."""
+"""CLI: init, create, build, chunks, list, extract, sync, add, remove, validate."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import click
 import yaml
 
 from ctx.config import init_project, load_config, save_config
-from ctx.module import get_content_files, load_module, resolve_module_path, validate_module
+from ctx.module import get_content_files, load_module, resolve_module_path, resolve_module_ref, validate_module
 from ctx.schema import ChunkingStrategy, ModuleConfig, ModuleRef
 from ctx.chunker.heading import HeadingChunker
 from ctx.chunker.fixed import FixedChunker
@@ -21,22 +21,23 @@ def _get_chunker(strategy: ChunkingStrategy):
         return HeadingChunker()
     elif strategy == ChunkingStrategy.FIXED:
         return FixedChunker()
+    elif strategy == ChunkingStrategy.DEFINITION:
+        from ctx.chunker.definition import DefinitionChunker
+        return DefinitionChunker()
     else:
-        raise click.ClickException(f"Strategy '{strategy.value}' not yet implemented")
+        raise click.ClickException(f"Unknown chunking strategy: {strategy.value!r}")
 
 
-def _build_module(module_path: Path, config=None):
-    """Build chunks for a single module. Returns list of Chunks."""
+def _build_module(module_path: Path, source_hash: str | None = None):
+    """Build chunks for a single module. Returns (chunks, mod)."""
     mod = load_module(module_path)
     chunker = _get_chunker(mod.chunking.strategy)
     all_chunks = []
 
     for content_file in get_content_files(module_path):
         rel_path = str(content_file.relative_to(module_path))
-        content = content_file.read_text()
-
         chunks = chunker.chunk(
-            content,
+            content_file.read_text(),
             module_name=mod.name,
             source_file=rel_path,
             tags=mod.tags,
@@ -45,6 +46,9 @@ def _build_module(module_path: Path, config=None):
             overlap_tokens=mod.chunking.overlap_tokens,
             heading_level=mod.chunking.heading_level,
         )
+        if source_hash:
+            for chunk in chunks:
+                chunk.metadata["source_hash"] = source_hash
         all_chunks.extend(chunks)
 
     return all_chunks, mod
@@ -61,7 +65,7 @@ def cli():
 def init(path):
     """Initialize a project with .context/config.yaml."""
     project_root = Path(path).resolve()
-    config = init_project(project_root)
+    init_project(project_root)
     click.echo(f"Initialized ctx project at {project_root / '.context'}")
 
 
@@ -82,43 +86,73 @@ def create(name, path):
     (module_dir / "module.yaml").write_text(
         yaml.dump(yaml_data, default_flow_style=False, sort_keys=False)
     )
-
-    # Starter content file
     (module_dir / "content" / "overview.md").write_text(
         f"# {name}\n\nAdd your content here.\n"
     )
 
     click.echo(f"Created module: {module_dir}")
-    click.echo(f"  module.yaml")
-    click.echo(f"  content/overview.md")
+    click.echo("  module.yaml")
+    click.echo("  content/overview.md")
 
 
 @cli.command()
 @click.option("--project", "-p", default=".", type=click.Path(exists=True), help="Project root")
-def build(project):
+@click.option("--force", is_flag=True, help="Rebuild even if content is unchanged")
+def build(project, force):
     """Build JSONL chunks for all configured modules."""
+    from ctx.deps import check_dependencies
+    from ctx.freshness import compute_module_hash, is_fresh, load_build_meta, record_build
+
     project_root = Path(project).resolve()
     config = load_config(project_root)
 
     if not config.modules:
         raise click.ClickException(
-            "No modules configured. Add modules to .context/config.yaml or use 'ctx build <path>'"
+            "No modules configured. Add modules to .context/config.yaml or run 'ctx add'."
         )
 
+    installed_names = set()
+    for ref in config.modules:
+        try:
+            mp = resolve_module_ref(ref, project_root)
+            installed_names.add(load_module(mp).name)
+        except Exception:
+            pass
+
+    meta = load_build_meta(project_root)
     chunks_dir = project_root / config.output.chunks_dir
     total = 0
 
     for mod_ref in config.modules:
-        module_path = resolve_module_path(mod_ref.path, project_root)
-        issues = validate_module(module_path)
-        if issues:
-            click.echo(f"Skipping {mod_ref.path}: {'; '.join(issues)}", err=True)
+        try:
+            module_path = resolve_module_ref(mod_ref, project_root)
+        except Exception as e:
+            click.echo(f"  Skipping {mod_ref.path or mod_ref.git}: {e}", err=True)
             continue
 
-        chunks, mod = _build_module(module_path)
+        issues = validate_module(module_path)
+        if issues:
+            click.echo(f"  Skipping {module_path.name}: {'; '.join(issues)}", err=True)
+            continue
+
+        mod = load_module(module_path)
+
+        # Dependency check — warn but don't abort
+        unmet = check_dependencies(mod.depends_on, installed_names)
+        for dep in unmet:
+            click.echo(f"  Warning: {mod.name} depends on '{dep}' which is not installed", err=True)
+
+        # Freshness check
+        source_hash = compute_module_hash(module_path)
+        if not force and is_fresh(mod.name, source_hash, meta):
+            click.echo(f"  {mod.name}: up to date (skipped)")
+            continue
+
+        chunks, mod = _build_module(module_path, source_hash=source_hash)
         if chunks:
             out = write_jsonl(chunks, chunks_dir / f"{mod.name}.jsonl")
             click.echo(f"  {mod.name}: {len(chunks)} chunks → {out}")
+            record_build(project_root, mod.name, source_hash, len(chunks))
             total += len(chunks)
 
     click.echo(f"Build complete: {total} total chunks")
@@ -133,8 +167,7 @@ def chunks(module_path, fmt):
     all_chunks, mod = _build_module(path)
 
     if fmt == "jsonl":
-        output = chunks_to_jsonl(all_chunks)
-        click.echo(output, nl=False)
+        click.echo(chunks_to_jsonl(all_chunks), nl=False)
     else:
         for chunk in all_chunks:
             click.echo(f"--- [{chunk.id}] ({chunk.metadata.get('token_count', '?')} tokens) ---")
@@ -154,13 +187,14 @@ def list_modules(project):
         return
 
     for mod_ref in config.modules:
-        module_path = resolve_module_path(mod_ref.path, project_root)
         try:
+            module_path = resolve_module_ref(mod_ref, project_root)
             mod = load_module(module_path)
             files = get_content_files(module_path)
-            click.echo(f"  {mod.name} v{mod.version} — {mod.description} ({len(files)} files)")
+            source = mod_ref.git or mod_ref.path or ""
+            click.echo(f"  {mod.name} v{mod.version} — {mod.description} ({len(files)} files)  [{source}]")
         except Exception as e:
-            click.echo(f"  {mod_ref.path} — ERROR: {e}")
+            click.echo(f"  {mod_ref.path or mod_ref.git} — ERROR: {e}")
 
 
 @cli.command()
@@ -193,7 +227,6 @@ def extract(source, module_path, source_type):
 
     extractor = get_extractor(src)
     created = extractor.extract(src, mod_path / "content")
-
     for path in created:
         click.echo(f"  Extracted → {path.relative_to(mod_path)}")
 
@@ -226,8 +259,11 @@ def sync(module_path):
 @cli.command()
 @click.argument("module_path", type=click.Path(exists=True))
 @click.option("--project", "-p", default=".", type=click.Path(exists=True), help="Project root")
-def add(module_path, project):
-    """Install a module's skills, rules, and CLAUDE.md into this project."""
+@click.option("--tool", "tools", multiple=True,
+              type=click.Choice(["claude", "cursor", "copilot", "continue"]),
+              help="Tool(s) to install for. Repeatable. Defaults to auto-detect.")
+def add(module_path, project, tools):
+    """Install a module's skills, rules, CLAUDE.md, and cross-framework files."""
     from ctx.integrations.claude_code import install_module
 
     mod_path = Path(module_path).resolve()
@@ -237,9 +273,8 @@ def add(module_path, project):
     if issues:
         raise click.ClickException(f"Invalid module: {'; '.join(issues)}")
 
-    result = install_module(mod_path, project_root)
+    result = install_module(mod_path, project_root, tools=list(tools) or None)
 
-    # Record in .context/config.yaml
     config = load_config(project_root)
     ref_path = str(mod_path)
     if not any(m.path == ref_path for m in config.modules):
@@ -247,11 +282,13 @@ def add(module_path, project):
         save_config(project_root, config)
 
     for name in result.skills:
-        click.echo(f"  skill   → .claude/skills/{name}")
+        click.echo(f"  skill      → .claude/skills/{name}")
     for name in result.rules:
-        click.echo(f"  rule    → .claude/rules/{name}")
+        click.echo(f"  rule       → .claude/rules/{name}")
     if result.claude_md_patched:
-        click.echo(f"  CLAUDE.md patched with @import")
+        click.echo("  CLAUDE.md  → @import added")
+    for fname in result.tool_files:
+        click.echo(f"  tool file  → {fname}")
 
     click.echo(f"Added {result.module_name}")
 
@@ -260,33 +297,44 @@ def add(module_path, project):
 @click.argument("module_name")
 @click.option("--project", "-p", default=".", type=click.Path(exists=True), help="Project root")
 def remove(module_name, project):
-    """Remove a module's skills, rules, and CLAUDE.md import from this project."""
+    """Remove a module's skills, rules, CLAUDE.md import, and tool files."""
     from ctx.integrations.claude_code import remove_module
 
     project_root = Path(project).resolve()
     config = load_config(project_root)
 
-    ref = next((m for m in config.modules if Path(m.path).name == module_name or
-                load_module(resolve_module_path(m.path, project_root)).name == module_name
-                ), None)
+    ref = next(
+        (m for m in config.modules
+         if _module_name_matches(m, module_name, project_root)),
+        None,
+    )
     if ref is None:
         raise click.ClickException(f"Module '{module_name}' not found in .context/config.yaml")
 
-    mod_path = resolve_module_path(ref.path, project_root)
+    mod_path = resolve_module_ref(ref, project_root)
     result = remove_module(mod_path, project_root)
 
-    # Remove from config
-    config.modules = [m for m in config.modules if m.path != ref.path]
+    config.modules = [m for m in config.modules if m is not ref]
     save_config(project_root, config)
 
     for name in result.skills_removed:
-        click.echo(f"  removed skill   .claude/skills/{name}")
+        click.echo(f"  removed skill      .claude/skills/{name}")
     for name in result.rules_removed:
-        click.echo(f"  removed rule    .claude/rules/{name}")
+        click.echo(f"  removed rule       .claude/rules/{name}")
     if result.claude_md_patched:
-        click.echo(f"  CLAUDE.md import removed")
+        click.echo("  removed CLAUDE.md  @import")
+    for fname in result.tool_files_removed:
+        click.echo(f"  removed tool file  {fname}")
 
     click.echo(f"Removed {result.module_name}")
+
+
+def _module_name_matches(ref: ModuleRef, target_name: str, project_root: Path) -> bool:
+    try:
+        mp = resolve_module_ref(ref, project_root)
+        return load_module(mp).name == target_name
+    except Exception:
+        return False
 
 
 @cli.command()

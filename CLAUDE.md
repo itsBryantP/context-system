@@ -20,7 +20,7 @@ Full spec: `SPEC.md` | Implementation plan: `PLAN.md`
 | 1 — Core | Done | schema, config, module loader, chunkers (heading + fixed), JSONL writer, CLI |
 | 2 — Extractors | Done | PDF, PPTX, URL, Markdown → content/ ingestion; `ctx extract` and `ctx sync` CLI commands |
 | 3 — Claude Code integration | Done | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching, config registration |
-| 4 — Polish | Not started | definition chunker, dependency resolution, git URLs |
+| 4 — Polish | Done | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
 
 ---
 
@@ -35,7 +35,8 @@ src/ctx/
 ├── chunker/
 │   ├── base.py             # ChunkStrategy ABC and Chunk dataclass
 │   ├── heading.py          # Heading-based semantic chunking (default)
-│   └── fixed.py            # Fixed token-size sliding window
+│   ├── fixed.py            # Fixed token-size sliding window
+│   └── definition.py       # One chunk per term; H3/H4 or **Bold**: detection, grouping
 ├── extractors/
 │   ├── __init__.py         # Registry — get_extractor(source) dispatcher
 │   ├── base.py             # Extractor ABC
@@ -43,13 +44,20 @@ src/ctx/
 │   ├── pdf.py              # pdftotext (poppler) primary, PyMuPDF fallback
 │   ├── pptx.py             # python-pptx; slides → ## Slide N, notes → blockquotes
 │   └── url.py              # urllib fetch + markdownify; stores fetched_at frontmatter
+├── deps.py                 # parse_dep / check_dependencies — depends_on validation
+├── freshness.py            # compute_module_hash, build metadata, is_fresh / record_build
+├── git.py                  # parse_git_ref, resolve_git_module — clone/cache git modules
 └── integrations/
     ├── jsonl.py            # JSONL serialization and file writing
-    └── claude_code.py      # install_module / remove_module — symlinks + CLAUDE.md patching
+    └── claude_code.py      # install_module / remove_module — symlinks, CLAUDE.md, cross-tool files
 tests/
 ├── test_chunker.py
+├── test_definition_chunker.py
 ├── test_extractors.py
 ├── test_claude_code.py
+├── test_deps.py
+├── test_freshness.py
+├── test_git.py
 ├── test_module.py
 └── fixtures/sample-module/ # Minimal valid module for testing
 ```
@@ -75,12 +83,18 @@ pytest -v                      # verbose
 
 ```bash
 ctx --help
-ctx create my-module           # scaffold a new module
-ctx chunks ./my-module         # stream JSONL to stdout
-ctx chunks ./my-module -f text # human-readable output
-ctx init                       # create .context/config.yaml in cwd
-ctx build                      # build all modules configured in .context/config.yaml
-ctx validate ./my-module       # validate module structure
+ctx create my-module                        # scaffold a new module
+ctx chunks ./my-module                      # stream JSONL to stdout
+ctx chunks ./my-module -f text              # human-readable output
+ctx init                                    # create .context/config.yaml in cwd
+ctx build                                   # build all modules (skips unchanged)
+ctx build --force                           # rebuild even if content unchanged
+ctx validate ./my-module                    # validate module structure
+ctx add ./my-module                         # install module (auto-detects tools)
+ctx add ./my-module --tool cursor --tool claude  # install for specific tools
+ctx remove my-module-name                   # remove module by name
+ctx extract spec.pdf --into ./my-module     # ingest a source file
+ctx sync ./my-module                        # re-extract all sources in module.yaml
 ```
 
 ---
@@ -92,6 +106,23 @@ Deterministic and hierarchical: `{module}/{file-stem}/{section-slug}`. Same cont
 
 ### Tokenization
 Uses `tiktoken` with `cl100k_base` encoding. All token counts are pre-computed at build time and stored in chunk metadata.
+
+### Git URL modules
+`ModuleRef` supports `git:` in addition to `path:` in `.context/config.yaml`:
+```yaml
+modules:
+  - git: https://github.com/org/repo.git#subdir@v1.0
+```
+Repos are cloned once to `~/.ctx/cache/<hash>/` and reused. Format: `repo[#subdir][@ref]`.
+
+### Freshness tracking
+`ctx build` hashes each module's `content/` files (SHA-256) and skips modules whose hash hasn't changed since the last build. Metadata stored in `.context/.build-meta.json`. Use `--force` to bypass.
+
+### Dependency warnings
+Modules declare `depends_on: [module-name@version]` in `module.yaml`. `ctx build` emits a warning (not error) for any unmet dependencies. Version constraints are recorded but not enforced yet.
+
+### Cross-framework tool files
+`ctx add --tool cursor|copilot|continue` symlinks tool-specific files (`.cursorrules`, `COPILOT.md`, `.continuerules`) from the module to the project root. Without `--tool`, auto-detects based on project structure (`.cursor/`, `.github/`, `.continuerules`).
 
 ### Module Schema (module.yaml)
 Validated by `ModuleConfig` Pydantic model in `schema.py`. Required fields: `name`, `version`, `description`. Chunking defaults to `heading` strategy at H2 level, 500 max tokens, 50 overlap.
