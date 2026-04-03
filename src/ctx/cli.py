@@ -164,6 +164,66 @@ def list_modules(project):
 
 
 @cli.command()
+@click.argument("source")
+@click.option("--into", "-i", "module_path", required=True, type=click.Path(exists=True), help="Target module directory")
+@click.option("--type", "-t", "source_type", type=click.Choice(["pdf", "pptx", "markdown", "url"]), help="Force source type (auto-detected if omitted)")
+def extract(source, module_path, source_type):
+    """Extract a source file or URL into a module's content/ directory."""
+    from ctx.extractors import get_extractor
+    from ctx.schema import Source, SourceType
+
+    mod_path = Path(module_path).resolve()
+
+    if source_type:
+        stype = SourceType(source_type)
+    elif source.startswith(("http://", "https://")):
+        stype = SourceType.URL
+    elif source.lower().endswith(".pdf"):
+        stype = SourceType.PDF
+    elif source.lower().endswith((".pptx", ".ppt")):
+        stype = SourceType.PPTX
+    else:
+        stype = SourceType.MARKDOWN
+
+    src = Source(
+        type=stype,
+        path=source if stype != SourceType.URL else None,
+        url=source if stype == SourceType.URL else None,
+    )
+
+    extractor = get_extractor(src)
+    created = extractor.extract(src, mod_path / "content")
+
+    for path in created:
+        click.echo(f"  Extracted → {path.relative_to(mod_path)}")
+
+
+@cli.command()
+@click.argument("module_path", type=click.Path(exists=True))
+def sync(module_path):
+    """Re-extract all sources declared in module.yaml into content/."""
+    from ctx.extractors import get_extractor
+
+    path = Path(module_path).resolve()
+    mod = load_module(path)
+
+    if not mod.sources:
+        raise click.ClickException(f"No sources declared in {mod.name}/module.yaml")
+
+    output_dir = path / "content"
+    total = 0
+
+    for source in mod.sources:
+        extractor = get_extractor(source)
+        created = extractor.extract(source, output_dir)
+        for f in created:
+            click.echo(f"  [{source.type.value}] → {f.name}")
+            total += 1
+
+    click.echo(f"Synced {total} file(s) for {mod.name}")
+
+
+@cli.command()
 @click.argument("module_path", type=click.Path(exists=True))
 def validate(module_path):
     """Validate a module directory."""

@@ -18,7 +18,7 @@ Full spec: `SPEC.md` | Implementation plan: `PLAN.md`
 | Phase | Status | What |
 |-------|--------|------|
 | 1 — Core | Done | schema, config, module loader, chunkers (heading + fixed), JSONL writer, CLI |
-| 2 — Extractors | Not started | PDF, PPTX, URL → markdown ingestion |
+| 2 — Extractors | Done | PDF, PPTX, URL, Markdown → content/ ingestion; `ctx extract` and `ctx sync` CLI commands |
 | 3 — Claude Code integration | Not started | `ctx add` / `ctx remove` symlink management |
 | 4 — Polish | Not started | definition chunker, dependency resolution, git URLs |
 
@@ -28,7 +28,7 @@ Full spec: `SPEC.md` | Implementation plan: `PLAN.md`
 
 ```
 src/ctx/
-├── cli.py                  # Click CLI: init, create, build, chunks, list, validate
+├── cli.py                  # Click CLI: init, create, build, chunks, list, validate, extract, sync
 ├── schema.py               # Pydantic models for module.yaml and .context/config.yaml
 ├── config.py               # Load/save .context/config.yaml
 ├── module.py               # Module loading, validation, content file resolution
@@ -36,13 +36,19 @@ src/ctx/
 │   ├── base.py             # ChunkStrategy ABC and Chunk dataclass
 │   ├── heading.py          # Heading-based semantic chunking (default)
 │   └── fixed.py            # Fixed token-size sliding window
-├── extractors/             # Phase 2 — stubs only
-│   └── __init__.py
+├── extractors/
+│   ├── __init__.py         # Registry — get_extractor(source) dispatcher
+│   ├── base.py             # Extractor ABC
+│   ├── markdown.py         # Passthrough copy with frontmatter stripping
+│   ├── pdf.py              # pdftotext (poppler) primary, PyMuPDF fallback
+│   ├── pptx.py             # python-pptx; slides → ## Slide N, notes → blockquotes
+│   └── url.py              # urllib fetch + markdownify; stores fetched_at frontmatter
 └── integrations/
     ├── jsonl.py            # JSONL serialization and file writing
     └── __init__.py         # Phase 3 — claude_code.py goes here
 tests/
 ├── test_chunker.py
+├── test_extractors.py
 ├── test_module.py
 └── fixtures/sample-module/ # Minimal valid module for testing
 ```
@@ -98,12 +104,13 @@ Validated by `ProjectConfig`. References modules by local path only (MVP). JSONL
 3. Add a new `ChunkingStrategy` enum value in `schema.py`
 4. Wire it up in `cli.py:_get_chunker()`
 
-### Adding an Extractor (Phase 2)
-Implement the `Extractor` ABC from `extractors/base.py` (to be created):
+### Adding an Extractor
+Subclass `Extractor` from `extractors/base.py` and register it in `extractors/__init__.py`:
 ```python
 def can_handle(self, source: Source) -> bool: ...
 def extract(self, source: Source, output_dir: Path) -> list[Path]: ...
 ```
+Add an instance to `_REGISTRY` in `extractors/__init__.py`. Order matters — first match wins.
 
 ---
 
