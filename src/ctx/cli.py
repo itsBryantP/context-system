@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from importlib.metadata import version, PackageNotFoundError
 
 import click
 import yaml
@@ -54,7 +55,16 @@ def _build_module(module_path: Path, source_hash: str | None = None):
     return all_chunks, mod
 
 
+def _get_version():
+    """Get the package version."""
+    try:
+        return version("ctx-modules")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 @click.group()
+@click.version_option(version=_get_version(), prog_name="ctx")
 def cli():
     """ctx — Context module system for RAG and AI coding tools."""
     pass
