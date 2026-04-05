@@ -224,7 +224,7 @@ def extract(source, module_path, source_type):
         stype = SourceType.URL
     elif source.lower().endswith(".pdf"):
         stype = SourceType.PDF
-    elif source.lower().endswith((".pptx", ".ppt")):
+    elif source.lower().endswith(".pptx"):
         stype = SourceType.PPTX
     else:
         stype = SourceType.MARKDOWN

@@ -14,7 +14,7 @@ _EXT_MAP: dict[str, str] = {
     ".txt": "plaintext",
     ".pdf": "pdf",
     ".pptx": "pptx",
-    ".ppt": "pptx",
+    ".ppt": "unsupported",  # legacy binary format; python-pptx requires .pptx
     ".html": "html",
     ".htm": "html",
     ".yaml": "structured",
