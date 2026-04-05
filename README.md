@@ -168,6 +168,14 @@ my-docs-module/
 ctx pack ./my-docs/ --install
 # Writes to .context/packed/my-docs/
 # Wires into CLAUDE.md and .context/config.yaml automatically
+
+# Install for specific tools (e.g., Bob Shell)
+ctx pack ./my-docs/ --install --tool bob
+# Installs for Bob Shell only
+
+# Install for multiple tools
+ctx pack ./my-docs/ --install --tool claude --tool bob
+# Installs for both Claude Code and Bob Shell
 ```
 
 ### Auto-detection
@@ -211,6 +219,49 @@ cat ./project-context/module.yaml
 # Install and use immediately in this project
 ctx pack ./project-docs/ --install
 ctx build
+```
+
+### Pack with Bob Shell integration
+
+```bash
+# Pack and install for Bob Shell
+ctx pack ./api-docs/ --install --tool bob
+# Creates .context/packed/api-docs/
+# Installs BOB.md if present in source directory
+# Auto-detects and installs any bob/ directory with modes/tools/servers
+
+# Pack with custom Bob Shell files
+# First, create a directory with Bob Shell integration:
+mkdir -p ./my-knowledge/bob/modes
+mkdir -p ./my-knowledge/bob/tools
+
+# Add a BOB.md file
+cat > ./my-knowledge/BOB.md << 'EOF'
+# My Knowledge Base
+
+This module provides domain-specific knowledge for Bob Shell.
+
+## Usage
+
+Use the custom modes and tools to interact with this knowledge.
+EOF
+
+# Add a custom mode
+cat > ./my-knowledge/bob/modes/review.yaml << 'EOF'
+name: Knowledge Review
+slug: knowledge-review
+description: Review code against knowledge base
+tools:
+  - read_file
+  - search_file_content
+context:
+  - type: chunks
+    source: .context/chunks/my-knowledge.jsonl
+EOF
+
+# Pack and install
+ctx pack ./my-knowledge/ --install --tool bob
+# Now Bob Shell has access to the knowledge base with custom mode
 ```
 
 ---
@@ -404,11 +455,19 @@ api-patterns/
 │   ├── api-spec.md
 │   └── authentication.md
 ├── CLAUDE.md                # Optional: imported into consuming project's CLAUDE.md
+├── BOB.md                   # Optional: Bob Shell context
 ├── skills/                  # Optional: Claude Code skill directories
 │   └── review-api/
 │       └── SKILL.md
 ├── rules/                   # Optional: path-scoped Claude Code rules
 │   └── api-validation.md
+├── bob/                     # Optional: Bob Shell integration
+│   ├── modes/               # Custom modes for Bob Shell
+│   │   └── api-review.yaml
+│   ├── tools/               # Custom tools for Bob Shell
+│   │   └── search-pattern.yaml
+│   └── servers/             # MCP servers for Bob Shell
+│       └── kb.json
 ├── .cursorrules             # Optional: Cursor rules
 ├── COPILOT.md               # Optional: GitHub Copilot instructions
 └── .continuerules           # Optional: Continue.dev rules
@@ -623,6 +682,11 @@ my-module/
 ├── CLAUDE.md          # Claude Code
 ├── skills/            # Claude Code
 ├── rules/             # Claude Code
+├── BOB.md             # Bob Shell
+├── bob/               # Bob Shell
+│   ├── modes/         # Custom modes
+│   ├── tools/         # Custom tools
+│   └── servers/       # MCP servers
 ├── .cursorrules       # Cursor
 ├── COPILOT.md         # GitHub Copilot
 └── .continuerules     # Continue.dev
@@ -635,13 +699,14 @@ my-module/
 ctx add ~/api-patterns
 
 # Explicit: install for specific tools
-ctx add ~/api-patterns --tool claude --tool cursor
+ctx add ~/api-patterns --tool claude --tool bob
 
 # All tools at once
-ctx add ~/api-patterns --tool claude --tool cursor --tool copilot --tool continue
+ctx add ~/api-patterns --tool claude --tool cursor --tool copilot --tool continue --tool bob
 ```
 
 Detection heuristics:
+- **bob** — `.bob/` directory or `BOB.md` file exists
 - **cursor** — `.cursor/` directory or `.cursorrules` file exists
 - **copilot** — `.github/` directory exists
 - **continue** — `.continuerules` file exists
@@ -745,6 +810,7 @@ ctx pack ./my-docs/ \
 | `--install` | `false` | Install to `.context/packed/<name>/` and register in config |
 | `--format`, `-f` | `jsonl` | Stdout format: `jsonl` or `text` |
 | `--project`, `-p` | `.` | Project root (used with `--install`) |
+| `--tool` | auto-detect | Tool(s) to install for: `claude`, `cursor`, `copilot`, `continue`, `bob` |
 
 ### `ctx init [path]`
 
