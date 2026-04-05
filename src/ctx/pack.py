@@ -515,6 +515,7 @@ def pack(
     overlap: int = 50,
     output: Path | None = None,
     install: bool = False,
+    tools: list[str] | None = None,
     fmt: str = "jsonl",
     project_root: Path | None = None,
 ) -> "list[Chunk]":
@@ -596,7 +597,7 @@ def pack(
             from ctx.config import load_config, save_config  # noqa: PLC0415
             from ctx.schema import ModuleRef  # noqa: PLC0415
 
-            install_module(packed_dir, _project_root)
+            install_module(packed_dir, _project_root, tools=tools)
             config = load_config(_project_root)
             ref_path = str(packed_dir)
             if not any(m.path == ref_path for m in config.modules):

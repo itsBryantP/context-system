@@ -359,12 +359,15 @@ def _module_name_matches(ref: ModuleRef, target_name: str, project_root: Path) -
 @click.option("--overlap", default=50, show_default=True, help="Overlap tokens between chunks")
 @click.option("--output", "-o", default=None, type=click.Path(), help="Write a module directory here")
 @click.option("--install", is_flag=True, help="Install into .context/packed/ and register in config")
+@click.option("--tool", "tools", multiple=True,
+              type=click.Choice(["claude", "cursor", "copilot", "continue", "bob"]),
+              help="Tool(s) to install for (with --install). Auto-detects if omitted.")
 @click.option("--format", "-f", "fmt", default="jsonl",
               type=click.Choice(["jsonl", "text"]),
               help="Output format when writing to stdout")
 @click.option("--project", "-p", default=".", type=click.Path(exists=True),
               help="Project root (for --install)")
-def pack(directory, name, description, tags, strategy, max_tokens, overlap, output, install, fmt, project):
+def pack(directory, name, description, tags, strategy, max_tokens, overlap, output, install, tools, fmt, project):
     """Pack a directory of mixed files into a context module in one step.
 
     Scans DIRECTORY, extracts all supported file types to markdown, auto-selects
@@ -388,6 +391,7 @@ def pack(directory, name, description, tags, strategy, max_tokens, overlap, outp
         overlap=overlap,
         output=output_path,
         install=install,
+        tools=list(tools) if tools else None,
         fmt=fmt,
         project_root=project_root,
     )
