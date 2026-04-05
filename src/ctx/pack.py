@@ -587,8 +587,11 @@ def pack(
             click.echo(f"Module written to {output}", err=True)
 
         elif install:
+            import shutil  # noqa: PLC0415
             _project_root = project_root or Path.cwd()
             packed_dir = _project_root / ".context" / "packed" / mod_name
+            if packed_dir.exists():
+                shutil.rmtree(packed_dir)
             write_module(
                 packed_dir, mod_name, mod_description, mod_tags,
                 extracted, strategies, all_chunks, max_tokens, overlap,
