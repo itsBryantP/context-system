@@ -343,9 +343,26 @@ my-module/
 ├── CLAUDE.md                # Claude Code
 ├── skills/                  # Claude Code
 ├── rules/                   # Claude Code
+├── BOB.md                   # Bob Shell
+├── bob/                     # Bob Shell
+│   ├── modes/               # Custom modes
+│   ├── tools/               # Custom tools
+│   └── servers/             # MCP servers
 ├── .cursorrules             # Cursor
 ├── COPILOT.md               # GitHub Copilot
 └── .continuerules           # Continue.dev
 ```
 
 `ctx add` installs the appropriate files based on detected tooling in the project, or explicit `--tool` flag.
+
+### Bob Shell Integration
+
+Bob Shell uses:
+- **BOB.md** — Context file (like CLAUDE.md)
+- **Modes** — Specialized interaction contexts (`.bob/modes/*.yaml`)
+- **Tools** — Custom capabilities (`.bob/tools/*.yaml`)
+- **MCP Servers** — Model Context Protocol servers (`.bob/servers/*.json`)
+
+Detection: `.bob/` directory or `BOB.md` file exists in project root.
+
+See `specs/BOB_SPEC.md` for complete Bob Shell integration specification.
