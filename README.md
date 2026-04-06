@@ -675,6 +675,85 @@ paths:
 
 ---
 
+## Activating Context Retrieval in Your Harness
+
+After running `ctx pack --install`, paste the following prompt into Claude Code, Bob Shell, or any other AI coding assistant. It will self-discover the installed modules, create a search skill, wire it into the harness, and update the appropriate context file so the assistant proactively retrieves relevant knowledge going forward.
+
+```
+Look at the ctx modules installed in this project by reading `.context/config.yaml`
+and scanning `.context/packed/` for module directories.
+
+For each installed module:
+1. Read its `module.yaml` for name, description, and tags
+2. Read the first 20 lines of its `.jsonl` chunks file to understand what topics it covers
+3. Note the path to its chunks file
+
+Then do ALL of the following:
+
+## 1. Create a search skill
+
+Write a skill file at:
+  `.context/packed/<module-name>/skills/search-<module-name>/SKILL.md`
+
+Use this template (fill in MODULE_NAME and CHUNKS_PATH from the module):
+
+---
+name: search-<module-name>
+description: Search the <module-name> knowledge base for relevant context
+allowed-tools: Bash
+---
+
+Search the <module-name> context module for: $ARGUMENTS
+
+!`python3 -c "
+import sys, json
+query = '$ARGUMENTS'.lower()
+results = []
+with open('<CHUNKS_PATH>') as f:
+    for line in f:
+        c = json.loads(line)
+        if query in c['content'].lower():
+            results.append((c['id'], c['content']))
+for cid, content in results[:5]:
+    print(f'[{cid}]')
+    print(content[:700])
+    print()
+" 2>/dev/null`
+
+## 2. Symlink the skill for this harness
+
+- If you are Claude Code: create a symlink at `.claude/skills/search-<module-name>` pointing to the skill directory above
+- If you are Bob Shell: create a symlink at `.bob/skills/search-<module-name>` (or the equivalent Bob skills directory)
+
+## 3. Update this harness's context file
+
+- If you are Claude Code: update `CLAUDE.md`
+- If you are Bob Shell: update `BOB.md`
+
+Add a section titled `## Context Modules` (or append to it if it exists) with:
+- The module name, description, and what topics it covers (inferred from tags and chunk sample)
+- A clear instruction: when the user asks about any of those topics, proactively run the
+  search skill before answering rather than relying on training knowledge alone
+- The exact skill invocation to use
+
+Example wording (adapt the topics based on what you found in the chunks):
+
+## Context Modules
+
+This project has domain-specific knowledge packed as ctx modules. When answering
+questions about <topics inferred from tags and chunk content>, always search the
+installed context first using the search skill before answering from training data.
+
+To search: use the `search-<module-name>` skill with your query as the argument.
+The results will show relevant excerpts from the actual project documentation.
+
+---
+
+Do all three steps now. Report what you created and what topics you identified from the module content.
+```
+
+---
+
 ## Cross-Framework Support
 
 A module can carry rule files for multiple AI tools:
