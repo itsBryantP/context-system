@@ -187,6 +187,19 @@ Repos are cloned once to `~/.ctx/cache/<hash>/` and reused. Format: `repo[#subdi
 ### Freshness tracking
 `ctx build` hashes each module's `content/` files (SHA-256) and skips modules whose hash hasn't changed since the last build. Metadata stored in `.context/.build-meta.json`. Use `--force` to bypass.
 
+### Supported file types in `ctx pack`
+
+| Extension | Classification | Notes |
+|-----------|---------------|-------|
+| `.md`, `.markdown` | `markdown` | Frontmatter stripped |
+| `.txt` | `plaintext` | Filename → H1 heading |
+| `.pdf` | `pdf` | pdftotext → PyMuPDF fallback |
+| `.pptx` | `pptx` | python-pptx |
+| `.ppt` | `unsupported` | Legacy binary format; python-pptx requires .pptx |
+| `.boxnote` | `boxnote` | Box Notes (ProseMirror JSON) |
+| `.html`, `.htm` | `html` | markdownify |
+| `.yaml`, `.yml`, `.json` | `structured` | Fenced code block |
+
 ### Cross-framework tool files
 `ctx add --tool bob|cursor|copilot|continue` symlinks tool-specific files from the module to the project. Without `--tool`, auto-detects based on project structure.
 
@@ -336,8 +349,10 @@ When you make or observe changes that affect project structure, tooling, or conv
 | `pydantic` | Schema validation for module.yaml and config.yaml |
 | `pyyaml` | YAML parsing |
 | `tiktoken` | Token counting (cl100k_base) |
+| `pymupdf` | PDF extraction (core) |
+| `python-pptx` | PPTX extraction (core) |
+| `markdownify` | HTML extraction (core) |
 | `pytest` | Test runner (dev) |
-| `pymupdf`, `python-pptx`, `markdownify` | Optional — Phase 2 extractors |
 
 ---
 
