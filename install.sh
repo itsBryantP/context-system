@@ -137,6 +137,28 @@ fi
 
 info "ctx-modules installed with extras: $EXTRAS"
 
+# Verify extractor packages are importable from the target Python.
+# uv pip may install into a managed venv that differs from the Python used
+# to run ctx — if any package is missing, fall back to pip install directly.
+EXTRACTOR_PKGS=("pymupdf" "python-pptx" "markdownify")
+MISSING=()
+for pkg in "${EXTRACTOR_PKGS[@]}"; do
+  import_name="${pkg//-/_}"   # python-pptx → python_pptx, etc.
+  # Special case: pymupdf is imported as 'fitz'
+  [[ "$pkg" == "pymupdf" ]] && import_name="fitz"
+  [[ "$pkg" == "python-pptx" ]] && import_name="pptx"
+  if ! "$PYTHON" -c "import ${import_name}" &>/dev/null; then
+    MISSING+=("$pkg")
+  fi
+done
+
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  warn "Some extractor packages are not importable from $PYTHON — installing via pip directly"
+  echo  "     Missing: ${MISSING[*]}"
+  "$PYTHON" -m pip install --quiet "${MISSING[@]}"
+  info "Extractor packages installed: ${MISSING[*]}"
+fi
+
 # ── 5. Check for optional system tools ──────────────────────────────────────
 
 heading "5. Optional system dependencies"
