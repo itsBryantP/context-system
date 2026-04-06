@@ -15,6 +15,7 @@ _EXT_MAP: dict[str, str] = {
     ".pdf": "pdf",
     ".pptx": "pptx",
     ".ppt": "unsupported",  # legacy binary format; python-pptx requires .pptx
+    ".boxnote": "boxnote",
     ".html": "html",
     ".htm": "html",
     ".yaml": "structured",
@@ -171,6 +172,8 @@ def _extract_one(result: ScanResult, input_dir: Path, tmp_dir: Path) -> Path:
         return _extract_pdf(src, out)
     if cls == "pptx":
         return _extract_pptx_file(src, out)
+    if cls == "boxnote":
+        return _extract_boxnote(src, out)
     if cls == "html":
         return _extract_html(src, out)
     if cls == "structured":
@@ -207,6 +210,101 @@ def _extract_pptx_file(src: Path, out: Path) -> Path:
     from ctx.extractors.pptx import _extract_pptx  # noqa: PLC0415
     out.write_text(_extract_pptx(src), encoding="utf-8")
     return out
+
+
+def _extract_boxnote(src: Path, out: Path) -> Path:
+    import json  # noqa: PLC0415
+
+    try:
+        data = json.loads(src.read_text(encoding="utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Could not parse Box Note JSON: {exc}") from exc
+
+    doc = data.get("doc", {})
+    lines: list[str] = [f"# {src.stem}", ""]
+
+    def render(node: object, list_depth: int = 0, ordered: bool = False, index: int = 1) -> None:
+        if not isinstance(node, dict):
+            return
+        ntype = node.get("type", "")
+        children = node.get("content") or []
+
+        if ntype == "heading":
+            level = node.get("attrs", {}).get("level", 2)
+            prefix = "#" * (level + 1)  # shift down one so doc title stays H1
+            text = _boxnote_inline_text(children)
+            if text:
+                lines.append(f"\n{prefix} {text}")
+        elif ntype == "paragraph":
+            text = _boxnote_inline_text(children)
+            if text:
+                lines.append(text)
+            else:
+                lines.append("")
+        elif ntype in ("bullet_list", "check_list"):
+            for child in children:
+                render(child, list_depth=list_depth, ordered=False)
+        elif ntype == "ordered_list":
+            for i, child in enumerate(children, 1):
+                render(child, list_depth=list_depth, ordered=True, index=i)
+        elif ntype in ("list_item", "check_list_item"):
+            indent = "  " * list_depth
+            marker = f"{index}." if ordered else "-"
+            # first paragraph becomes the list item text; nested lists recurse
+            first = True
+            for child in children:
+                if child.get("type") == "paragraph":
+                    text = _boxnote_inline_text(child.get("content") or [])
+                    if first and text:
+                        lines.append(f"{indent}{marker} {text}")
+                        first = False
+                    elif text:
+                        lines.append(f"{indent}  {text}")
+                else:
+                    render(child, list_depth=list_depth + 1)
+        elif ntype == "horizontal_rule":
+            lines.append("\n---")
+        else:
+            # doc, unknown block types — just recurse into children
+            for child in children:
+                render(child, list_depth=list_depth)
+
+    for node in doc.get("content") or []:
+        render(node)
+
+    # Collapse runs of more than one blank line
+    collapsed: list[str] = []
+    prev_blank = False
+    for line in lines:
+        is_blank = not line.strip()
+        if is_blank and prev_blank:
+            continue
+        collapsed.append(line)
+        prev_blank = is_blank
+
+    out.write_text("\n".join(collapsed).strip() + "\n", encoding="utf-8")
+    return out
+
+
+def _boxnote_inline_text(nodes: list) -> str:
+    """Concatenate text from inline content nodes, preserving bold marks."""
+    parts: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if node.get("type") == "text":
+            text = node.get("text", "")
+            marks = {m["type"] for m in node.get("marks", []) if isinstance(m, dict)}
+            if "bold" in marks:
+                text = f"**{text}**"
+            if "italic" in marks:
+                text = f"*{text}*"
+            if "code" in marks:
+                text = f"`{text}`"
+            parts.append(text)
+        elif node.get("type") == "hard_break":
+            parts.append("\n")
+    return "".join(parts)
 
 
 def _extract_html(src: Path, out: Path) -> Path:
