@@ -163,6 +163,19 @@ scan_directory(input_dir)
   → write_module / pack (output modes)
 ```
 
+Supported file types in `ctx pack` (`_EXT_MAP` in `pack.py`):
+
+| Extension | Classification | Notes |
+|-----------|---------------|-------|
+| `.md`, `.markdown` | `markdown` | Frontmatter stripped |
+| `.txt` | `plaintext` | Filename → H1 heading |
+| `.pdf` | `pdf` | pdftotext → PyMuPDF fallback |
+| `.pptx` | `pptx` | python-pptx |
+| `.ppt` | `unsupported` | Legacy binary format; python-pptx requires .pptx |
+| `.boxnote` | `boxnote` | Box Notes (ProseMirror JSON) |
+| `.html`, `.htm` | `html` | markdownify |
+| `.yaml`, `.yml`, `.json` | `structured` | Fenced code block |
+
 To support a new file type in `ctx pack`:
 1. Add the extension to `_EXT_MAP` in `pack.py` with a classification string
 2. Add a handler `_extract_<classification>(src, out) -> Path` in `pack.py`
@@ -196,5 +209,7 @@ The goal is that `CLAUDE.md` and `.claude/settings.json` always reflect the curr
 | `pydantic` | Schema validation for module.yaml and config.yaml |
 | `pyyaml` | YAML parsing |
 | `tiktoken` | Token counting (cl100k_base) |
+| `pymupdf` | PDF extraction (core) |
+| `python-pptx` | PPTX extraction (core) |
+| `markdownify` | HTML extraction (core) |
 | `pytest` | Test runner (dev) |
-| `pymupdf`, `python-pptx`, `markdownify` | Optional — Phase 2 extractors |

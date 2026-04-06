@@ -45,7 +45,7 @@ bash install.sh --dev  # also installs pytest
 **Manual install:**
 
 ```bash
-pip install "ctx-modules[extractors]"
+pip install ctx-modules
 ```
 
 **Requirements:** Python 3.11+, `git` on PATH (for git URL modules)
@@ -113,9 +113,11 @@ ctx chunks ~/api-patterns | head -5
 | `.md`, `.markdown` | Frontmatter stripped, body passed through |
 | `.txt` | Filename becomes `# heading`, content follows |
 | `.pdf` | pdftotext (poppler) → PyMuPDF fallback → markdown |
-| `.pptx`, `.ppt` | Slides → `## Slide N`, speaker notes → blockquotes |
+| `.pptx` | Slides → `## Slide N`, speaker notes → blockquotes |
+| `.boxnote` | Box Notes (ProseMirror JSON) → markdown with headings and lists |
 | `.html`, `.htm` | Converted via markdownify |
 | `.yaml`, `.yml`, `.json` | Wrapped in a fenced code block with filename as heading |
+| `.ppt` | Skipped — legacy binary format, use `.pptx` instead |
 | Everything else | Skipped with a warning |
 
 Subdirectories are scanned recursively. Hidden directories (`.git`, `_private`) are ignored.
@@ -166,7 +168,7 @@ my-docs-module/
 
 ```bash
 ctx pack ./my-docs/ --install
-# Writes to .context/packed/my-docs/
+# Writes to .context/packed/my-docs/ (replaces existing if present)
 # Wires into CLAUDE.md and .context/config.yaml automatically
 
 # Install for specific tools (e.g., Bob Shell)
