@@ -1136,6 +1136,4 @@ src/ctx/
 
 ---
 
-## License
 
-MIT
