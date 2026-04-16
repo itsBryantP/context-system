@@ -127,10 +127,11 @@ class TestScanDirectory:
         results = scan_directory(tmp_path)
         assert results[0].classification == "html"
 
-    def test_ppt_extension_classified_as_pptx(self, tmp_path):
+    def test_ppt_extension_classified_as_unsupported(self, tmp_path):
+        # Legacy .ppt is no longer supported (python-pptx requires .pptx).
         make_tree(tmp_path, ["old.ppt"])
         results = scan_directory(tmp_path)
-        assert results[0].classification == "pptx"
+        assert results[0].classification == "unsupported"
 
 
 # ── kebab_case ────────────────────────────────────────────────────────────────
@@ -1096,10 +1097,11 @@ class TestPackCLI:
         d.mkdir()
         (d / "readme.md").write_text("# Readme\n\nContent.\n")
 
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli, ["pack", str(d)])
         assert result.exit_code == 0, result.output
-        lines = [l for l in result.output.strip().splitlines() if l.strip()]
+        # Progress lines go to stderr; JSONL to stdout.
+        lines = [l for l in result.stdout.strip().splitlines() if l.strip()]
         assert lines
         obj = json.loads(lines[0])
         assert "id" in obj
@@ -1113,7 +1115,7 @@ class TestPackCLI:
         (d / "guide.md").write_text("# Guide\n\nContent.\n")
         out = tmp_path / "module-out"
 
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli, ["pack", str(d), "-o", str(out)])
         assert result.exit_code == 0, result.output
         assert (out / "module.yaml").exists()
@@ -1126,10 +1128,10 @@ class TestPackCLI:
         d.mkdir()
         (d / "doc.md").write_text("# Doc\n\nSome content here.\n")
 
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli, ["pack", str(d), "-f", "text"])
         assert result.exit_code == 0, result.output
-        assert "---" in result.output
+        assert "---" in result.stdout
 
     def test_cli_name_and_description_flags(self, tmp_path):
         import yaml as _yaml
@@ -1141,7 +1143,7 @@ class TestPackCLI:
         (d / "doc.md").write_text("# Doc\n\nContent.\n")
         out = tmp_path / "output"
 
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli, [
             "pack", str(d), "-o", str(out),
             "-n", "my-module", "-d", "Custom description",
