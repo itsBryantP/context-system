@@ -2,23 +2,23 @@
 
 **Date:** April 16, 2026
 
-## What Exists
+## Status
 
-10 test files with ~2,700 lines covering: pack pipeline, extractors (PDF, PPTX, URL, Markdown, Box Notes), chunkers (heading, fixed, definition), Claude Code integration, git integration, freshness tracking, dependencies, and module loading.
+**Implemented.** 297 passing tests across 12 files, running in under 1 second, with full home-directory isolation.
 
-## What's Missing
+## What Was Added
 
-1. **CLI tests** — No tests for any of the 11 Click commands in `cli.py`
-2. **Schema validation** — No direct tests for Pydantic model edge cases
-3. **Error paths** — Limited coverage of failure modes
+| File | Tests | What |
+|------|-------|------|
+| `tests/test_cli.py` | 19 | CLI commands — init, create, chunks, validate, build, pack, add/remove, list |
+| `tests/test_schema.py` | 14 | Pydantic model validation for ModuleConfig, ProjectConfig, ModuleRef, ChunkingConfig |
+| `tests/test_module.py` | +1 | Malformed YAML error path |
+| `tests/conftest.py` | — | Autouse fixture redirects `Path.home()` to a per-test tmp dir |
 
-## Plan
+## Side Fixes
 
-| Priority | What | File | Effort |
-|----------|------|------|--------|
-| 1 | CLI command tests | `tests/test_cli.py` | ~150 lines |
-| 2 | Schema edge case tests | `tests/test_schema.py` | ~80 lines |
-| 3 | Error handling additions | Existing test files | ~30 lines |
+- `tests/test_pack.py` — removed `CliRunner(mix_stderr=False)` (removed in Click 8.2+), switched to `result.stdout` for stdout-only assertions
+- `tests/test_pack.py` — updated `.ppt` classification test (file format was intentionally dropped)
 
 ## Not Doing
 

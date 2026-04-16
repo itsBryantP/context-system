@@ -25,6 +25,12 @@ def test_load_module_missing_yaml(tmp_path):
         load_module(tmp_path)
 
 
+def test_load_module_malformed_yaml(tmp_path):
+    (tmp_path / "module.yaml").write_text("name: test\nversion: [unclosed\n")
+    with pytest.raises(Exception):
+        load_module(tmp_path)
+
+
 def test_get_content_files():
     files = get_content_files(SAMPLE)
     assert len(files) >= 1
