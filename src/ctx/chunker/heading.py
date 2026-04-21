@@ -11,6 +11,34 @@ import re
 from ctx.chunker.base import Chunk, ChunkStrategy, count_tokens, slugify
 
 
+_HEADING_ONLY_RE = re.compile(r"^#{1,6}\s+\S")
+_H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+
+
+def _is_orphan_heading(text: str) -> bool:
+    """Return True if text contains only markdown heading lines (any level).
+
+    Blank lines are tolerated. An empty string is considered an orphan
+    (vacuously — no non-heading content to preserve).
+    """
+    stripped = text.strip()
+    if not stripped:
+        return True
+    for line in stripped.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if not _HEADING_ONLY_RE.match(line):
+            return False
+    return True
+
+
+def _extract_doc_title(content: str) -> str | None:
+    """Return the first `# heading` line's text, or None if no H1 present."""
+    match = _H1_RE.search(content)
+    return match.group(1).strip() if match else None
+
+
 class HeadingChunker(ChunkStrategy):
     """Split markdown at heading boundaries."""
 
@@ -31,6 +59,9 @@ class HeadingChunker(ChunkStrategy):
         chunks: list[Chunk] = []
 
         for section_path, section_content in sections:
+            if _is_orphan_heading(section_content):
+                continue
+
             token_count = count_tokens(section_content)
 
             if token_count <= max_tokens:
@@ -41,10 +72,12 @@ class HeadingChunker(ChunkStrategy):
                     tags=tags, version=version,
                 ))
             else:
-                # Try splitting at next heading level
+                # Try splitting at next heading level.
                 sub_sections = self._split_at_level(section_content, heading_level + 1)
                 if len(sub_sections) > 1:
                     for sub_path, sub_content in sub_sections:
+                        if _is_orphan_heading(sub_content):
+                            continue
                         full_path = section_path + sub_path
                         if count_tokens(sub_content) <= max_tokens:
                             chunks.append(self._make_chunk(
@@ -54,7 +87,6 @@ class HeadingChunker(ChunkStrategy):
                                 tags=tags, version=version,
                             ))
                         else:
-                            # Fall back to fixed splitting within section
                             chunks.extend(self._fixed_fallback(
                                 sub_content, full_path,
                                 module_name=module_name,
@@ -73,7 +105,6 @@ class HeadingChunker(ChunkStrategy):
                         overlap_tokens=overlap_tokens,
                     ))
 
-        # Assign chunk indices
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
             chunk.metadata["total_chunks"] = len(chunks)
@@ -83,7 +114,11 @@ class HeadingChunker(ChunkStrategy):
     def _split_at_level(
         self, content: str, level: int
     ) -> list[tuple[list[str], str]]:
-        """Split content at a given heading level. Returns (section_path, content) pairs."""
+        """Split content at a given heading level. Returns (section_path, content) pairs.
+
+        Orphan preambles (content before the first heading at `level` that is itself
+        only heading lines) are dropped.
+        """
         pattern = re.compile(rf"^(#{{{level}}})\s+(.+)$", re.MULTILINE)
         matches = list(pattern.finditer(content))
 
@@ -92,9 +127,8 @@ class HeadingChunker(ChunkStrategy):
 
         sections: list[tuple[list[str], str]] = []
 
-        # Content before first heading
         preamble = content[: matches[0].start()].strip()
-        if preamble:
+        if preamble and not _is_orphan_heading(preamble):
             sections.append(([], preamble))
 
         for i, match in enumerate(matches):
