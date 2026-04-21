@@ -2,12 +2,12 @@
 
 ## Overview
 
-Four changes driven by the evaluation in `prompts/chunking-evaluation-prompt.md`:
+Four changes driven by the evaluation in `prompts/chunking-evaluation-prompt.md`. Each phase has a full specification under `specs/features/`:
 
-1. **Fix oversized-paragraph bug in `FixedChunker`** — single paragraphs larger than `max_tokens` are currently emitted as-is, violating the chunker's budget contract.
-2. **Eliminate title-only orphan chunks** — roughly 10% of chunks on real corpora are just a bare H1 or H2 header with no body; these are retrieval noise.
-3. **Hierarchical-retrieval metadata hints** (from evaluation Claim F, partial adoption) — add `doc_title`, `has_code`, `language`, `prev_chunk_id`, `next_chunk_id` to metadata so RAG consumers can implement parent-expansion or code-aware filtering without ctx taking on that complexity.
-4. **Opt-in Contextual Retrieval** — new `chunking.contextualize` flag that prepends an LLM-generated situating sentence to each chunk before output.
+1. **Fix oversized-paragraph bug in `FixedChunker`** (`specs/features/CHUNKER_OVERSIZED_FIX_SPEC.md`) — single paragraphs larger than `max_tokens` are currently emitted as-is, violating the chunker's budget contract.
+2. **Eliminate title-only orphan chunks** (`specs/features/CHUNKER_ORPHAN_ELIMINATION_SPEC.md`) — roughly 10% of chunks on real corpora are just a bare H1 or H2 header with no body; these are retrieval noise.
+3. **Hierarchical-retrieval metadata hints** (`specs/features/CHUNKER_METADATA_SPEC.md`) — add `doc_title`, `has_code`, `language`, `prev_chunk_id`, `next_chunk_id`, `file_id` to metadata so RAG consumers can implement parent-expansion or code-aware filtering without ctx taking on that complexity.
+4. **Opt-in Contextual Retrieval** (`specs/features/CONTEXTUAL_RETRIEVAL_SPEC.md`) — new `chunking.contextualize` flag that prepends an LLM-generated situating sentence to each chunk before output.
 
 Phases 1–3 are pure-code changes and preserve ctx's "zero-LLM at build time" default. Phase 4 introduces an optional dependency path and ships behind a flag that defaults off.
 
