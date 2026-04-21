@@ -13,7 +13,8 @@ Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 
 ## Implementation Status
 
-All phases complete. The project is feature-complete per the original spec plus the `ctx pack` extension.
+Original spec plus the `ctx pack` extension are complete. A chunking-quality
+improvement plan is active — see `plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`.
 
 | Phase | What was delivered |
 |-------|--------------------|
@@ -22,6 +23,7 @@ All phases complete. The project is feature-complete per the original spec plus 
 | 3 — Claude Code | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching |
 | 4 — Polish | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
 | 5 — Pack | `ctx pack` — zero-config packaging: scan, extract, auto-detect strategy/name/tags, chunk, output |
+| 6 — Chunking quality | 🔄 Planned — fix oversized-paragraph bug, eliminate orphan chunks, add retrieval metadata, opt-in Contextual Retrieval |
 
 ---
 
@@ -53,15 +55,25 @@ src/ctx/
     ├── jsonl.py            # JSONL serialization and file writing
     └── claude_code.py      # install_module / remove_module — symlinks, CLAUDE.md, cross-tool files
 tests/
+├── conftest.py             # Autouse fixture — redirects Path.home() to a tmp dir per test
 ├── test_chunker.py
 ├── test_definition_chunker.py
 ├── test_extractors.py
+├── test_boxnote.py         # .boxnote (ProseMirror JSON) extraction tests
 ├── test_claude_code.py
+├── test_cli.py             # CLI command tests (CliRunner against ctx.cli:cli)
+├── test_schema.py          # Pydantic model edge-case tests
+├── test_pack.py            # ctx pack pipeline (scan, extract, chunk, output)
 ├── test_deps.py
 ├── test_freshness.py
 ├── test_git.py
 ├── test_module.py
 └── fixtures/sample-module/ # Minimal valid module for testing
+docs/testing/               # Testing strategy, specs, pytest config, CI workflow
+plans/
+├── active/                 # In-flight work (e.g. CHUNKING_IMPROVEMENTS_PLAN.md)
+└── archive/                # Completed plans (PACK_PLAN.md, etc.)
+prompts/                    # Reusable prompts (e.g. chunking-evaluation-prompt.md)
 ```
 
 ---
@@ -79,6 +91,17 @@ uv pip install -e ".[dev]"     # editable install with dev deps
 pytest                         # run all tests
 pytest tests/test_chunker.py   # specific file
 pytest -v                      # verbose
+```
+
+Tests are fully isolated — `tests/conftest.py` monkeypatches `Path.home()` to a
+per-test tmp dir so `src/ctx/git.py`'s `~/.ctx/cache/` writes can never leak
+into the real home directory. After a run, `ls ~/.ctx` should still fail with
+"No such file or directory".
+
+If the global pytest has broken plugins, use a project-local venv:
+```bash
+python3 -m venv .venv-test && .venv-test/bin/pip install -e ".[dev,extractors]"
+.venv-test/bin/pytest
 ```
 
 ## Running the CLI

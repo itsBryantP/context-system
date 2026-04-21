@@ -7,7 +7,7 @@
 1. **RAG pipelines** — chunked JSONL with structured metadata, ingestible by any vector store
 2. **AI coding tools** — native integration with Bob Shell, Claude Code, Cursor, Copilot, and Continue
 
-Full spec: `specs/BOB_SPEC.md` | Implementation plan: `plans/active/BOB_PLAN.md` | Usage guide: `README.md`
+Full spec: `specs/BOB_SPEC.md` | Active plans: `plans/active/` (Bob Shell, chunking improvements) | Usage guide: `README.md`
 
 ---
 
@@ -18,11 +18,12 @@ Bob Shell integration is planned. Core system is feature-complete.
 | Phase | Status |
 |-------|--------|
 | 1 — Core | ✅ Complete — schema, config, module loader, chunkers, JSONL writer, CLI |
-| 2 — Extractors | ✅ Complete — PDF, PPTX, URL, Markdown extraction |
+| 2 — Extractors | ✅ Complete — PDF, PPTX, URL, Markdown, Box Notes extraction |
 | 3 — Claude Code | ✅ Complete — skills, rules, CLAUDE.md integration |
 | 4 — Polish | ✅ Complete — definition chunker, dependencies, freshness, git URLs |
 | 5 — Pack | ✅ Complete — zero-config packaging |
-| 6 — Bob Shell | 🔄 Planned — modes, tools, BOB.md, MCP servers |
+| 6 — Bob Shell | 🔄 Planned — modes, tools, BOB.md, MCP servers (`plans/active/BOB_PLAN.md`) |
+| 7 — Chunking quality | 🔄 Planned — oversized-paragraph fix, orphan elimination, retrieval metadata, opt-in Contextual Retrieval (`plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`) |
 
 ---
 
@@ -54,10 +55,15 @@ src/ctx/
     ├── jsonl.py            # JSONL serialization and file writing
     └── claude_code.py      # Cross-framework integration (Claude, Cursor, Copilot, Continue, Bob)
 tests/
+├── conftest.py              # Autouse fixture: Path.home() → tmp dir per test (isolation)
 ├── test_chunker.py
 ├── test_definition_chunker.py
 ├── test_extractors.py
+├── test_boxnote.py          # .boxnote (ProseMirror JSON) extraction
 ├── test_claude_code.py
+├── test_cli.py              # CLI command tests via CliRunner
+├── test_schema.py           # Pydantic model edge-case tests
+├── test_pack.py             # ctx pack pipeline
 ├── test_bob_integration.py  # Planned — Bob Shell integration tests
 ├── test_deps.py
 ├── test_freshness.py
@@ -66,6 +72,11 @@ tests/
 └── fixtures/
     ├── sample-module/       # Minimal valid module
     └── bob-test-module/     # Planned — Bob Shell test module
+docs/testing/                # Testing strategy, specs, pytest config, CI workflow
+plans/
+├── active/                  # In-flight plans (BOB_PLAN.md, CHUNKING_IMPROVEMENTS_PLAN.md)
+└── archive/                 # Completed plans (PACK_PLAN.md, PLAN.md)
+prompts/                     # Reusable prompts (chunking-evaluation, testing-plan)
 ```
 
 ---
@@ -142,6 +153,11 @@ pytest tests/test_chunker.py   # specific file
 pytest tests/test_bob_integration.py  # Bob Shell tests (when implemented)
 pytest -v                      # verbose
 ```
+
+Tests are isolated from the user's home directory via `tests/conftest.py`
+(monkeypatches `Path.home()` per test). `src/ctx/git.py` caches cloned modules
+under `~/.ctx/cache/` — the fixture prevents any test from writing there, even
+on accidental code paths. Verify post-run: `ls ~/.ctx` should still fail.
 
 ## Running the CLI
 
@@ -361,3 +377,7 @@ When you make or observe changes that affect project structure, tooling, or conv
 - **Specification**: `specs/BOB_SPEC.md` — Complete Bob Shell integration specification
 - **Implementation Plan**: `plans/active/BOB_PLAN.md` — Detailed implementation roadmap
 - **Examples**: See `specs/BOB_SPEC.md` for complete examples of modes, tools, and MCP servers
+
+## Other Active Plans
+
+- **Chunking improvements** (`plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`) — Four-phase plan to fix the `FixedChunker` oversized-paragraph bug, eliminate title-only orphan chunks, add hierarchical-retrieval metadata, and add opt-in Contextual Retrieval. Driven by the evaluation in `prompts/chunking-evaluation-prompt.md`.
