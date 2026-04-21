@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import re
 
-from ctx.chunker.base import Chunk, ChunkStrategy, count_tokens, get_encoder, slugify
+from ctx.chunker.base import (
+    Chunk,
+    ChunkStrategy,
+    apply_chain_metadata,
+    compute_file_id,
+    count_tokens,
+    derive_doc_title,
+    detect_code,
+    get_encoder,
+    slugify,
+)
 
 
 class FixedChunker(ChunkStrategy):
@@ -21,6 +31,9 @@ class FixedChunker(ChunkStrategy):
         max_tokens: int = 500,
         overlap_tokens: int = 50,
         _section_path: list[str] | None = None,
+        _doc_title: str | None = None,
+        _file_id: str | None = None,
+        _skip_chain: bool = False,
         **kwargs,
     ) -> list[Chunk]:
         paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
@@ -28,6 +41,17 @@ class FixedChunker(ChunkStrategy):
             return []
 
         section_path = _section_path or []
+        doc_title = _doc_title or derive_doc_title(source_file)
+        file_id = _file_id or compute_file_id(source_file)
+        common = dict(
+            module_name=module_name,
+            source_file=source_file,
+            tags=tags,
+            version=version,
+            doc_title=doc_title,
+            file_id=file_id,
+        )
+
         chunks: list[Chunk] = []
         current_paragraphs: list[str] = []
         current_tokens = 0
@@ -36,33 +60,23 @@ class FixedChunker(ChunkStrategy):
             para_tokens = count_tokens(para)
 
             if para_tokens > max_tokens:
-                # Oversized single paragraph — flush current, then split-and-emit.
                 if current_paragraphs:
                     chunks.append(self._make_chunk(
                         "\n\n".join(current_paragraphs),
-                        section_path, len(chunks),
-                        module_name=module_name,
-                        source_file=source_file,
-                        tags=tags, version=version,
+                        section_path, len(chunks), **common,
                     ))
                     current_paragraphs, current_tokens = [], 0
 
                 for piece in _split_oversized_paragraph(para, max_tokens, overlap_tokens):
                     chunks.append(self._make_chunk(
-                        piece, section_path, len(chunks),
-                        module_name=module_name,
-                        source_file=source_file,
-                        tags=tags, version=version,
+                        piece, section_path, len(chunks), **common,
                     ))
                 continue
 
             if current_tokens + para_tokens > max_tokens and current_paragraphs:
                 chunks.append(self._make_chunk(
                     "\n\n".join(current_paragraphs),
-                    section_path, len(chunks),
-                    module_name=module_name,
-                    source_file=source_file,
-                    tags=tags, version=version,
+                    section_path, len(chunks), **common,
                 ))
                 current_paragraphs, current_tokens = self._build_overlap(
                     current_paragraphs, overlap_tokens
@@ -74,15 +88,14 @@ class FixedChunker(ChunkStrategy):
         if current_paragraphs:
             chunks.append(self._make_chunk(
                 "\n\n".join(current_paragraphs),
-                section_path, len(chunks),
-                module_name=module_name,
-                source_file=source_file,
-                tags=tags, version=version,
+                section_path, len(chunks), **common,
             ))
 
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
             chunk.metadata["total_chunks"] = len(chunks)
+        if not _skip_chain:
+            apply_chain_metadata(chunks)
 
         return chunks
 
@@ -110,10 +123,14 @@ class FixedChunker(ChunkStrategy):
         source_file: str,
         tags: list[str],
         version: str,
+        doc_title: str,
+        file_id: str,
     ) -> Chunk:
         file_stem = source_file.rsplit("/", 1)[-1].removesuffix(".md")
         slug_parts = [file_stem] + [slugify(s) for s in section_path] + [str(index)]
         chunk_id = f"{module_name}/{'/'.join(slug_parts)}"
+
+        has_code, language = detect_code(content)
 
         return Chunk(
             id=chunk_id,
@@ -126,6 +143,10 @@ class FixedChunker(ChunkStrategy):
                 "version": version,
                 "heading_level": None,
                 "parent_section": section_path[-1] if section_path else None,
+                "doc_title": doc_title,
+                "file_id": file_id,
+                "has_code": has_code,
+                "language": language,
             },
         )
 

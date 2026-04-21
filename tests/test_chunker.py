@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from ctx.chunker.base import Chunk, count_tokens, slugify
+from ctx.chunker.base import (
+    Chunk,
+    compute_file_id,
+    count_tokens,
+    derive_doc_title,
+    detect_code,
+    slugify,
+)
 from ctx.chunker.heading import HeadingChunker, _is_orphan_heading, _extract_doc_title
 from ctx.chunker.fixed import FixedChunker
 
@@ -166,6 +173,137 @@ class TestOrphanHeadingHelper:
 
     def test_extract_doc_title_picks_first(self):
         assert _extract_doc_title("# First\n\n# Second") == "First"
+
+
+class TestMetadataHelpers:
+    def test_detect_code_python(self):
+        content = "Before.\n\n```python\nx = 1\n```\n\nAfter."
+        assert detect_code(content) == (True, "python")
+
+    def test_detect_code_no_language(self):
+        content = "```\nplain\n```"
+        assert detect_code(content) == (True, None)
+
+    def test_detect_code_multi_token_info(self):
+        content = "```python {linenos=true}\nx=1\n```"
+        assert detect_code(content) == (True, "python")
+
+    def test_detect_code_hyphenated(self):
+        content = "```objective-c\nNSLog(@\"x\");\n```"
+        assert detect_code(content) == (True, "objective-c")
+
+    def test_detect_code_multiple_blocks_first_wins(self):
+        content = "```python\nx=1\n```\n\ntext\n\n```bash\necho hi\n```"
+        assert detect_code(content) == (True, "python")
+
+    def test_detect_code_no_fences(self):
+        content = "Prose only, no code."
+        assert detect_code(content) == (False, None)
+
+    def test_detect_code_unclosed_fence(self):
+        content = "```python\nx = 1\n(no closing fence)"
+        assert detect_code(content) == (False, None)
+
+    def test_compute_file_id_stable(self):
+        a = compute_file_id("content/overview.md")
+        b = compute_file_id("content/overview.md")
+        assert a == b
+        assert len(a) == 12
+
+    def test_compute_file_id_differs_by_path(self):
+        assert compute_file_id("a.md") != compute_file_id("b.md")
+
+    def test_derive_doc_title(self):
+        assert derive_doc_title("notes.md") == "Notes"
+        assert derive_doc_title("api_reference.md") == "Api Reference"
+        assert derive_doc_title("kebab-case-doc.md") == "Kebab Case Doc"
+
+
+class TestNewMetadataFields:
+    """Verify Phase 3 metadata is on chunks from all three chunkers."""
+
+    def _assert_phase3_metadata(self, chunk):
+        for key in ("doc_title", "file_id", "has_code", "language",
+                    "prev_chunk_id", "next_chunk_id"):
+            assert key in chunk.metadata, f"missing {key} in {chunk.id}"
+
+    def test_heading_chunker_has_new_metadata(self):
+        content = "# Doc\n\n## Section\n\nSome content.\n"
+        chunker = HeadingChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        assert len(chunks) == 1
+        self._assert_phase3_metadata(chunks[0])
+        assert chunks[0].metadata["doc_title"] == "Doc"
+
+    def test_fixed_chunker_has_new_metadata(self):
+        content = "Para one.\n\nPara two.\n\nPara three."
+        chunker = FixedChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/no-h1.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        self._assert_phase3_metadata(chunks[0])
+        # Falls back to file-stem title when no H1
+        assert chunks[0].metadata["doc_title"] == "No H1"
+
+    def test_code_detection_on_heading_chunk(self):
+        content = "## Example\n\n```python\nprint('hi')\n```\n"
+        chunker = HeadingChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        assert chunks[0].metadata["has_code"] is True
+        assert chunks[0].metadata["language"] == "python"
+
+    def test_chain_property(self):
+        """next_chunk_id of chunk[i] == id of chunk[i+1]."""
+        content = "# Doc\n\n## A\n\nA body.\n\n## B\n\nB body.\n\n## C\n\nC body.\n"
+        chunker = HeadingChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        assert chunks[0].metadata["prev_chunk_id"] is None
+        assert chunks[-1].metadata["next_chunk_id"] is None
+        for i in range(len(chunks) - 1):
+            assert chunks[i].metadata["next_chunk_id"] == chunks[i + 1].id
+            assert chunks[i + 1].metadata["prev_chunk_id"] == chunks[i].id
+
+    def test_doc_title_shared_across_chunks(self):
+        content = "# API Patterns\n\n## A\n\nA body.\n\n## B\n\nB body.\n"
+        chunker = HeadingChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        titles = {c.metadata["doc_title"] for c in chunks}
+        assert titles == {"API Patterns"}
+        # Same file_id across chunks of same file
+        file_ids = {c.metadata["file_id"] for c in chunks}
+        assert len(file_ids) == 1
+
+    def test_heading_chunker_chain_survives_oversized_fallback(self):
+        """Chain must be contiguous even when a section falls back to FixedChunker."""
+        paras = "\n\n".join(["word " * 80 for _ in range(10)])
+        content = f"## Section\n\n{paras}\n"
+        chunker = HeadingChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        assert len(chunks) > 1, f"expected multiple chunks, got {len(chunks)}"
+        for i in range(len(chunks) - 1):
+            assert chunks[i].metadata["next_chunk_id"] == chunks[i + 1].id
 
 
 class TestFixedChunker:

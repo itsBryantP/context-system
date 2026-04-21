@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import tiktoken
 
@@ -40,12 +43,51 @@ def count_tokens(text: str) -> int:
 
 def slugify(text: str) -> str:
     """Convert heading text to a URL-safe slug."""
-    import re
     slug = text.lower().strip()
     slug = re.sub(r"[^\w\s-]", "", slug)
     slug = re.sub(r"[\s_]+", "-", slug)
     slug = slug.strip("-")
     return slug
+
+
+# ── Metadata helpers (Phase 3) ────────────────────────────────────────────────
+
+
+_FENCE_RE = re.compile(r"^```(.*)$", re.MULTILINE)
+
+
+def detect_code(content: str) -> tuple[bool, str | None]:
+    """Return (has_code, language) based on triple-backtick fences.
+
+    Requires an even count of fence markers (≥ 2). Language is the first
+    whitespace-delimited token of the opening fence's info string, lowercased.
+    """
+    fences = _FENCE_RE.findall(content)
+    if len(fences) < 2 or len(fences) % 2 != 0:
+        return (False, None)
+    info = fences[0].strip()
+    if info:
+        return (True, info.split()[0].lower())
+    return (True, None)
+
+
+def compute_file_id(source_file: str) -> str:
+    """Stable 12-char hash of the source file path."""
+    return hashlib.sha256(source_file.encode("utf-8")).hexdigest()[:12]
+
+
+def derive_doc_title(source_file: str) -> str:
+    """Fallback doc title from a source file path when no H1 is found."""
+    stem = Path(source_file).stem
+    return stem.replace("_", " ").replace("-", " ").title()
+
+
+def apply_chain_metadata(chunks: list[Chunk]) -> None:
+    """Populate prev_chunk_id / next_chunk_id across a file's chunk list."""
+    n = len(chunks)
+    for i, chunk in enumerate(chunks):
+        chunk.metadata["prev_chunk_id"] = chunks[i - 1].id if i > 0 else None
+        chunk.metadata["next_chunk_id"] = chunks[i + 1].id if i < n - 1 else None
 
 
 class ChunkStrategy(ABC):

@@ -8,7 +8,16 @@ from __future__ import annotations
 
 import re
 
-from ctx.chunker.base import Chunk, ChunkStrategy, count_tokens, slugify
+from ctx.chunker.base import (
+    Chunk,
+    ChunkStrategy,
+    apply_chain_metadata,
+    compute_file_id,
+    count_tokens,
+    derive_doc_title,
+    detect_code,
+    slugify,
+)
 
 
 _HEADING_ONLY_RE = re.compile(r"^#{1,6}\s+\S")
@@ -55,8 +64,20 @@ class HeadingChunker(ChunkStrategy):
         heading_level: int = 2,
         **kwargs,
     ) -> list[Chunk]:
+        doc_title = _extract_doc_title(content) or derive_doc_title(source_file)
+        file_id = compute_file_id(source_file)
+
         sections = self._split_at_level(content, heading_level)
         chunks: list[Chunk] = []
+
+        common = dict(
+            module_name=module_name,
+            source_file=source_file,
+            tags=tags,
+            version=version,
+            doc_title=doc_title,
+            file_id=file_id,
+        )
 
         for section_path, section_content in sections:
             if _is_orphan_heading(section_content):
@@ -65,14 +86,8 @@ class HeadingChunker(ChunkStrategy):
             token_count = count_tokens(section_content)
 
             if token_count <= max_tokens:
-                chunks.append(self._make_chunk(
-                    section_content, section_path,
-                    module_name=module_name,
-                    source_file=source_file,
-                    tags=tags, version=version,
-                ))
+                chunks.append(self._make_chunk(section_content, section_path, **common))
             else:
-                # Try splitting at next heading level.
                 sub_sections = self._split_at_level(section_content, heading_level + 1)
                 if len(sub_sections) > 1:
                     for sub_path, sub_content in sub_sections:
@@ -80,34 +95,26 @@ class HeadingChunker(ChunkStrategy):
                             continue
                         full_path = section_path + sub_path
                         if count_tokens(sub_content) <= max_tokens:
-                            chunks.append(self._make_chunk(
-                                sub_content, full_path,
-                                module_name=module_name,
-                                source_file=source_file,
-                                tags=tags, version=version,
-                            ))
+                            chunks.append(self._make_chunk(sub_content, full_path, **common))
                         else:
                             chunks.extend(self._fixed_fallback(
                                 sub_content, full_path,
-                                module_name=module_name,
-                                source_file=source_file,
-                                tags=tags, version=version,
                                 max_tokens=max_tokens,
                                 overlap_tokens=overlap_tokens,
+                                **common,
                             ))
                 else:
                     chunks.extend(self._fixed_fallback(
                         section_content, section_path,
-                        module_name=module_name,
-                        source_file=source_file,
-                        tags=tags, version=version,
                         max_tokens=max_tokens,
                         overlap_tokens=overlap_tokens,
+                        **common,
                     ))
 
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
             chunk.metadata["total_chunks"] = len(chunks)
+        apply_chain_metadata(chunks)
 
         return chunks
 
@@ -149,10 +156,14 @@ class HeadingChunker(ChunkStrategy):
         source_file: str,
         tags: list[str],
         version: str,
+        doc_title: str,
+        file_id: str,
     ) -> Chunk:
         file_stem = source_file.rsplit("/", 1)[-1].removesuffix(".md")
         slug_parts = [file_stem] + [slugify(s) for s in section_path]
         chunk_id = f"{module_name}/{'/'.join(slug_parts)}"
+
+        has_code, language = detect_code(content)
 
         return Chunk(
             id=chunk_id,
@@ -165,6 +176,10 @@ class HeadingChunker(ChunkStrategy):
                 "version": version,
                 "heading_level": len(section_path),
                 "parent_section": section_path[-2] if len(section_path) >= 2 else None,
+                "doc_title": doc_title,
+                "file_id": file_id,
+                "has_code": has_code,
+                "language": language,
             },
         )
 
@@ -177,6 +192,8 @@ class HeadingChunker(ChunkStrategy):
         source_file: str,
         tags: list[str],
         version: str,
+        doc_title: str,
+        file_id: str,
         max_tokens: int,
         overlap_tokens: int,
     ) -> list[Chunk]:
@@ -192,4 +209,7 @@ class HeadingChunker(ChunkStrategy):
             max_tokens=max_tokens,
             overlap_tokens=overlap_tokens,
             _section_path=section_path,
+            _doc_title=doc_title,
+            _file_id=file_id,
+            _skip_chain=True,
         )

@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import re
 
-from ctx.chunker.base import Chunk, ChunkStrategy, count_tokens, slugify
+from ctx.chunker.base import (
+    Chunk,
+    ChunkStrategy,
+    apply_chain_metadata,
+    compute_file_id,
+    count_tokens,
+    derive_doc_title,
+    detect_code,
+    slugify,
+)
 
 # H3/H4 headings used as definition boundaries
 _HEADING_RE = re.compile(r"^(#{3,4})\s+(.+)$", re.MULTILINE)
@@ -34,6 +43,11 @@ class DefinitionChunker(ChunkStrategy):
         overlap_tokens: int = 50,
         **kwargs,
     ) -> list[Chunk]:
+        from ctx.chunker.heading import _extract_doc_title
+
+        doc_title = _extract_doc_title(content) or derive_doc_title(source_file)
+        file_id = compute_file_id(source_file)
+
         defs = _extract_heading_defs(content)
         if len(defs) < 2:
             defs = _extract_bold_defs(content)
@@ -47,6 +61,8 @@ class DefinitionChunker(ChunkStrategy):
                 version=version,
                 max_tokens=max_tokens,
                 overlap_tokens=overlap_tokens,
+                _doc_title=doc_title,
+                _file_id=file_id,
             )
 
         groups = _group_definitions(defs, max_tokens)
@@ -68,10 +84,14 @@ class DefinitionChunker(ChunkStrategy):
                     max_tokens=max_tokens,
                     overlap_tokens=overlap_tokens,
                     _section_path=[term],
+                    _doc_title=doc_title,
+                    _file_id=file_id,
+                    _skip_chain=True,
                 )
                 chunks.extend(sub)
             else:
                 chunk_id = f"{module_name}/{file_stem}/{slugify(term)}"
+                has_code, language = detect_code(combined)
                 chunks.append(Chunk(
                     id=chunk_id,
                     module=module_name,
@@ -83,12 +103,17 @@ class DefinitionChunker(ChunkStrategy):
                         "version": version,
                         "heading_level": None,
                         "parent_section": None,
+                        "doc_title": doc_title,
+                        "file_id": file_id,
+                        "has_code": has_code,
+                        "language": language,
                     },
                 ))
 
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
             chunk.metadata["total_chunks"] = len(chunks)
+        apply_chain_metadata(chunks)
 
         return chunks
 
