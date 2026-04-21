@@ -133,3 +133,66 @@ class TestFixedChunker:
         for i, chunk in enumerate(chunks):
             assert chunk.metadata["chunk_index"] == i
             assert chunk.metadata["total_chunks"] == len(chunks)
+
+    def test_oversized_paragraph_split_at_newlines(self):
+        """A paragraph >max_tokens with internal \\n lines is split per line."""
+        # Build a paragraph where each line ≤50 tokens, total >500 tokens.
+        lines = [f"Line {i}: " + "word " * 40 for i in range(20)]
+        content = "\n".join(lines)  # single paragraph, no \n\n
+        assert count_tokens(content) > 500
+        chunker = FixedChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500, overlap_tokens=50,
+        )
+        assert len(chunks) > 1
+        # Invariant: every chunk ≤ max_tokens (with small slack for overlap)
+        for chunk in chunks:
+            assert chunk.metadata["token_count"] <= 550, (
+                f"chunk {chunk.id} has {chunk.metadata['token_count']} tokens, "
+                f"expected ≤550"
+            )
+
+    def test_oversized_paragraph_token_window_fallback(self):
+        """A paragraph with no breakpoints falls back to token-window splitting."""
+        # No newlines, no sentence terminators — only token-window works.
+        content = "aaaaaaaaaa " * 500  # one long run, >500 tokens
+        assert count_tokens(content) > 500
+        chunker = FixedChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500, overlap_tokens=50,
+        )
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert chunk.metadata["token_count"] <= 550
+
+    def test_oversized_sentence_split(self):
+        """A paragraph with sentence endings but no newlines splits at sentences."""
+        sentences = ["Sentence " + str(i) + ". " + "word " * 40 + "." for i in range(15)]
+        content = " ".join(sentences)  # one paragraph, sentence-terminated
+        assert count_tokens(content) > 500
+        chunker = FixedChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500, overlap_tokens=50,
+        )
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert chunk.metadata["token_count"] <= 550
+
+    def test_normal_paragraphs_unaffected(self):
+        """Normal paragraphs still split on \\n\\n boundaries."""
+        content = "Para one.\n\nPara two.\n\nPara three."
+        chunker = FixedChunker()
+        chunks = chunker.chunk(
+            content,
+            module_name="test", source_file="content/doc.md",
+            tags=[], version="1.0.0", max_tokens=500,
+        )
+        assert len(chunks) == 1
+        assert "Para one" in chunks[0].content
+        assert "Para three" in chunks[0].content
