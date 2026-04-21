@@ -13,9 +13,6 @@ Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 
 ## Implementation Status
 
-Original spec plus the `ctx pack` extension are complete. A chunking-quality
-improvement plan is active — see `plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`.
-
 | Phase | What was delivered |
 |-------|--------------------|
 | 1 — Core | schema, config, module loader, chunkers (heading + fixed), JSONL writer, CLI |
@@ -23,7 +20,7 @@ improvement plan is active — see `plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`.
 | 3 — Claude Code | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching |
 | 4 — Polish | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
 | 5 — Pack | `ctx pack` — zero-config packaging: scan, extract, auto-detect strategy/name/tags, chunk, output |
-| 6 — Chunking quality | 🔄 Planned — fix oversized-paragraph bug, eliminate orphan chunks, add retrieval metadata, opt-in Contextual Retrieval |
+| 6 — Chunking quality | ✅ FixedChunker oversized-paragraph fix, orphan-chunk elimination, hierarchical-retrieval metadata (`doc_title`, `has_code`, `language`, `prev_chunk_id`, `next_chunk_id`, `file_id`), opt-in Contextual Retrieval |
 
 ---
 
@@ -37,10 +34,11 @@ src/ctx/
 ├── config.py               # Load/save .context/config.yaml
 ├── module.py               # Module loading, validation, content file resolution
 ├── chunker/
-│   ├── base.py             # ChunkStrategy ABC and Chunk dataclass
-│   ├── heading.py          # Heading-based semantic chunking (default)
-│   ├── fixed.py            # Fixed token-size sliding window
-│   └── definition.py       # One chunk per term; H3/H4 or **Bold**: detection, grouping
+│   ├── base.py             # ChunkStrategy ABC, Chunk dataclass, metadata helpers (detect_code, compute_file_id, apply_chain_metadata)
+│   ├── heading.py          # Heading-based semantic chunking (default); orphan-heading filter
+│   ├── fixed.py            # Fixed token-size sliding window; oversized-paragraph splitter
+│   ├── definition.py       # One chunk per term; H3/H4 or **Bold**: detection, grouping
+│   └── contextualize.py    # Optional Contextual Retrieval — LLM-prepended situating context per chunk
 ├── extractors/
 │   ├── __init__.py         # Registry — get_extractor(source) dispatcher
 │   ├── base.py             # Extractor ABC
@@ -55,25 +53,28 @@ src/ctx/
     ├── jsonl.py            # JSONL serialization and file writing
     └── claude_code.py      # install_module / remove_module — symlinks, CLAUDE.md, cross-tool files
 tests/
-├── conftest.py             # Autouse fixture — redirects Path.home() to a tmp dir per test
+├── conftest.py              # Autouse fixture — redirects Path.home() to a tmp dir per test
 ├── test_chunker.py
 ├── test_definition_chunker.py
 ├── test_extractors.py
-├── test_boxnote.py         # .boxnote (ProseMirror JSON) extraction tests
+├── test_boxnote.py          # .boxnote (ProseMirror JSON) extraction tests
 ├── test_claude_code.py
-├── test_cli.py             # CLI command tests (CliRunner against ctx.cli:cli)
-├── test_schema.py          # Pydantic model edge-case tests
-├── test_pack.py            # ctx pack pipeline (scan, extract, chunk, output)
+├── test_cli.py              # CLI command tests (CliRunner against ctx.cli:cli)
+├── test_schema.py           # Pydantic model edge-case tests
+├── test_pack.py             # ctx pack pipeline (scan, extract, chunk, output)
+├── test_contextualize.py    # Contextual Retrieval — mocked Anthropic client
 ├── test_deps.py
 ├── test_freshness.py
 ├── test_git.py
 ├── test_module.py
-└── fixtures/sample-module/ # Minimal valid module for testing
-docs/testing/               # Testing strategy, specs, pytest config, CI workflow
+└── fixtures/sample-module/  # Minimal valid module for testing
+.github/workflows/test.yml   # CI — push/PR to main, fresh Ubuntu VM, uv sync + pytest
+docs/testing/                # Testing strategy, specs, pytest config, CI workflow
 plans/
-├── active/                 # In-flight work (e.g. CHUNKING_IMPROVEMENTS_PLAN.md)
-└── archive/                # Completed plans (PACK_PLAN.md, etc.)
-prompts/                    # Reusable prompts (e.g. chunking-evaluation-prompt.md)
+├── active/                  # In-flight work
+└── archive/                 # Completed plans (e.g. CHUNKING_IMPROVEMENTS_PLAN.md, PACK_PLAN.md)
+specs/features/              # Per-feature specs (PACK_SPEC.md, CHUNKER_*, CONTEXTUAL_RETRIEVAL_SPEC.md)
+prompts/                     # Reusable prompts (chunking-evaluation, testing-plan)
 ```
 
 ---
@@ -154,7 +155,10 @@ Modules declare `depends_on: [module-name@version]` in `module.yaml`. `ctx build
 `ctx add --tool cursor|copilot|continue` symlinks tool-specific files (`.cursorrules`, `COPILOT.md`, `.continuerules`) from the module to the project root. Without `--tool`, auto-detects based on project structure (`.cursor/`, `.github/`, `.continuerules`).
 
 ### Module Schema (module.yaml)
-Validated by `ModuleConfig` Pydantic model in `schema.py`. Required fields: `name`, `version`, `description`. Chunking defaults to `heading` strategy at H2 level, 500 max tokens, 50 overlap.
+Validated by `ModuleConfig` Pydantic model in `schema.py`. Only `name` is required (`version` defaults to `"0.1.0"`, `description` to `""`). Chunking defaults to `heading` strategy at H2 level, 500 max tokens, 50 overlap. Optional `chunking.contextualize: true` (with `contextualize_model: "claude-haiku-4-5"`) enables Contextual Retrieval — requires the `contextualize` extra (`uv pip install 'ctx-modules[contextualize]'`) and `ANTHROPIC_API_KEY`.
+
+### Chunk metadata
+Every chunk carries a rich metadata dict: `tags`, `version`, `token_count`, `chunk_index`/`total_chunks`, `heading_level`, `parent_section`, `doc_title`, `file_id` (stable sha256 prefix of source path), `has_code` (bool, set iff content contains a complete fenced block), `language` (first-fence info string lowercased), `prev_chunk_id`/`next_chunk_id` (chain within a source file). When contextualize is enabled, `situating_context` and `contextualized: true` are also set. Consumers use these for parent-expansion, code-aware filtering, and doc-level diversification.
 
 ### Project Config (.context/config.yaml)
 Validated by `ProjectConfig`. Modules referenced by `path:` (local) or `git:` (remote). JSONL output goes to `.context/chunks/` (gitignore in consuming projects).
@@ -236,3 +240,4 @@ The goal is that `CLAUDE.md` and `.claude/settings.json` always reflect the curr
 | `python-pptx` | PPTX extraction (core) |
 | `markdownify` | HTML extraction (core) |
 | `pytest` | Test runner (dev) |
+| `anthropic` | Contextual Retrieval LLM calls (optional extra: `contextualize`) |

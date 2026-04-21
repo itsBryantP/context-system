@@ -23,7 +23,7 @@ Bob Shell integration is planned. Core system is feature-complete.
 | 4 — Polish | ✅ Complete — definition chunker, dependencies, freshness, git URLs |
 | 5 — Pack | ✅ Complete — zero-config packaging |
 | 6 — Bob Shell | 🔄 Planned — modes, tools, BOB.md, MCP servers (`plans/active/BOB_PLAN.md`) |
-| 7 — Chunking quality | 🔄 Planned — oversized-paragraph fix, orphan elimination, retrieval metadata, opt-in Contextual Retrieval (`plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`) |
+| 7 — Chunking quality | ✅ Complete — FixedChunker oversized-paragraph fix, orphan elimination, hierarchical-retrieval metadata, opt-in Contextual Retrieval |
 
 ---
 
@@ -37,10 +37,11 @@ src/ctx/
 ├── config.py               # Load/save .context/config.yaml
 ├── module.py               # Module loading, validation, content file resolution
 ├── chunker/
-│   ├── base.py             # ChunkStrategy ABC and Chunk dataclass
-│   ├── heading.py          # Heading-based semantic chunking (default)
-│   ├── fixed.py            # Fixed token-size sliding window
-│   └── definition.py       # One chunk per term; H3/H4 or **Bold**: detection
+│   ├── base.py             # ChunkStrategy ABC, Chunk dataclass, metadata helpers
+│   ├── heading.py          # Heading-based semantic chunking (default); orphan filter
+│   ├── fixed.py            # Fixed token-size sliding window; oversized splitter
+│   ├── definition.py       # One chunk per term; H3/H4 or **Bold**: detection
+│   └── contextualize.py    # Optional Contextual Retrieval (Anthropic) — opt-in
 ├── extractors/
 │   ├── __init__.py         # Registry — get_extractor(source) dispatcher
 │   ├── base.py             # Extractor ABC
@@ -64,6 +65,7 @@ tests/
 ├── test_cli.py              # CLI command tests via CliRunner
 ├── test_schema.py           # Pydantic model edge-case tests
 ├── test_pack.py             # ctx pack pipeline
+├── test_contextualize.py    # Contextual Retrieval with mocked Anthropic client
 ├── test_bob_integration.py  # Planned — Bob Shell integration tests
 ├── test_deps.py
 ├── test_freshness.py
@@ -72,10 +74,12 @@ tests/
 └── fixtures/
     ├── sample-module/       # Minimal valid module
     └── bob-test-module/     # Planned — Bob Shell test module
+.github/workflows/test.yml   # CI — push/PR to main, Ubuntu, uv sync + pytest
 docs/testing/                # Testing strategy, specs, pytest config, CI workflow
 plans/
-├── active/                  # In-flight plans (BOB_PLAN.md, CHUNKING_IMPROVEMENTS_PLAN.md)
-└── archive/                 # Completed plans (PACK_PLAN.md, PLAN.md)
+├── active/                  # In-flight plans (BOB_PLAN.md)
+└── archive/                 # Completed (PACK_PLAN.md, CHUNKING_IMPROVEMENTS_PLAN.md)
+specs/features/              # Per-feature specs (PACK, CHUNKER_*, CONTEXTUAL_RETRIEVAL)
 prompts/                     # Reusable prompts (chunking-evaluation, testing-plan)
 ```
 
@@ -369,6 +373,7 @@ When you make or observe changes that affect project structure, tooling, or conv
 | `python-pptx` | PPTX extraction (core) |
 | `markdownify` | HTML extraction (core) |
 | `pytest` | Test runner (dev) |
+| `anthropic` | Contextual Retrieval (optional extra: `contextualize`) |
 
 ---
 
@@ -378,6 +383,15 @@ When you make or observe changes that affect project structure, tooling, or conv
 - **Implementation Plan**: `plans/active/BOB_PLAN.md` — Detailed implementation roadmap
 - **Examples**: See `specs/BOB_SPEC.md` for complete examples of modes, tools, and MCP servers
 
-## Other Active Plans
+## Chunking Quality (Phase 7) — Implemented
 
-- **Chunking improvements** (`plans/active/CHUNKING_IMPROVEMENTS_PLAN.md`) — Four-phase plan to fix the `FixedChunker` oversized-paragraph bug, eliminate title-only orphan chunks, add hierarchical-retrieval metadata, and add opt-in Contextual Retrieval. Driven by the evaluation in `prompts/chunking-evaluation-prompt.md`.
+Four-phase rollout, driven by the evaluation in `prompts/chunking-evaluation-prompt.md`. All four phases shipped; the plan has moved to `plans/archive/`.
+
+| Phase | Change | Spec |
+|-------|--------|------|
+| 1 | `FixedChunker` oversized-paragraph splitter — every chunk now ≤ `max_tokens` | `specs/features/CHUNKER_OVERSIZED_FIX_SPEC.md` |
+| 2 | `HeadingChunker` orphan-heading elimination — zero title-only chunks on real corpora | `specs/features/CHUNKER_ORPHAN_ELIMINATION_SPEC.md` |
+| 3 | Hierarchical-retrieval metadata — `doc_title`, `file_id`, `has_code`, `language`, `prev_chunk_id`, `next_chunk_id` on every chunk | `specs/features/CHUNKER_METADATA_SPEC.md` |
+| 4 | Opt-in Contextual Retrieval via `chunking.contextualize: true` — lazy Anthropic import, content-addressed cache at `.context/.contextualize-cache.json` | `specs/features/CONTEXTUAL_RETRIEVAL_SPEC.md` |
+
+Rollout check on the zconfig/docs reference corpus: `chunks 147 → 139`, `max_tok 1559 → 500`, `orphans 15 → 0`.
