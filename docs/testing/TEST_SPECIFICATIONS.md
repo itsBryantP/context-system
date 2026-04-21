@@ -109,11 +109,9 @@ The first test already exists. Add the malformed YAML case:
 |------|-------|----------|
 | Malformed YAML | Write bad YAML to `module.yaml` | Exception raised (YAML parse or Pydantic) |
 
-### In `test_extractors.py`
+### Defensively unreachable: `get_extractor` unsupported format
 
-| Test | Input | Expected |
-|------|-------|----------|
-| Unsupported format | `get_extractor(source_with_unknown_type)` | `ValueError` |
+Originally planned but dropped: `get_extractor(source_with_unknown_type)` would raise `ValueError`. In practice this is unreachable — `Source.type` is a closed `SourceType` enum with four values (`MARKDOWN`, `PDF`, `PPTX`, `URL`) and every enum value has a registered extractor. The `raise ValueError` in `src/ctx/extractors/__init__.py` is defensive-only and can only be triggered by mocking the registry, which tests the mock rather than the code.
 
 ---
 
