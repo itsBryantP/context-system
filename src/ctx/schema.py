@@ -52,6 +52,8 @@ class ChunkingConfig(BaseModel):
     overlap_tokens: int = 50
     heading_level: int = 2
     overrides: list[ChunkingOverride] = Field(default_factory=list)
+    contextualize: bool = False
+    contextualize_model: str = "claude-haiku-4-5"
 
 
 class ModuleConfig(BaseModel):

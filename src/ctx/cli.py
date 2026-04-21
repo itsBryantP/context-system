@@ -29,7 +29,11 @@ def _get_chunker(strategy: ChunkingStrategy):
         raise click.ClickException(f"Unknown chunking strategy: {strategy.value!r}")
 
 
-def _build_module(module_path: Path, source_hash: str | None = None):
+def _build_module(
+    module_path: Path,
+    source_hash: str | None = None,
+    contextualize_cache: Path | None = None,
+):
     """Build chunks for a single module. Returns (chunks, mod)."""
     mod = load_module(module_path)
     chunker = _get_chunker(mod.chunking.strategy)
@@ -37,8 +41,9 @@ def _build_module(module_path: Path, source_hash: str | None = None):
 
     for content_file in get_content_files(module_path):
         rel_path = str(content_file.relative_to(module_path))
+        text = content_file.read_text()
         chunks = chunker.chunk(
-            content_file.read_text(),
+            text,
             module_name=mod.name,
             source_file=rel_path,
             tags=mod.tags,
@@ -47,6 +52,25 @@ def _build_module(module_path: Path, source_hash: str | None = None):
             overlap_tokens=mod.chunking.overlap_tokens,
             heading_level=mod.chunking.heading_level,
         )
+
+        if mod.chunking.contextualize and chunks:
+            try:
+                from ctx.chunker.contextualize import (
+                    ContextualizeError,
+                    contextualize_chunks,
+                )
+            except ImportError as e:
+                raise click.ClickException(str(e)) from e
+            try:
+                chunks = contextualize_chunks(
+                    chunks,
+                    text,
+                    model=mod.chunking.contextualize_model,
+                    cache_path=contextualize_cache,
+                )
+            except ContextualizeError as e:
+                raise click.ClickException(str(e)) from e
+
         if source_hash:
             for chunk in chunks:
                 chunk.metadata["source_hash"] = source_hash
@@ -158,7 +182,12 @@ def build(project, force):
             click.echo(f"  {mod.name}: up to date (skipped)")
             continue
 
-        chunks, mod = _build_module(module_path, source_hash=source_hash)
+        cache_path = project_root / ".context" / ".contextualize-cache.json"
+        chunks, mod = _build_module(
+            module_path,
+            source_hash=source_hash,
+            contextualize_cache=cache_path,
+        )
         if chunks:
             out = write_jsonl(chunks, chunks_dir / f"{mod.name}.jsonl")
             click.echo(f"  {mod.name}: {len(chunks)} chunks → {out}")
