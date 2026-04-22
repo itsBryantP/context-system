@@ -11,6 +11,7 @@ _CROSS_TOOL_FILES: dict[str, str] = {
     "cursor": ".cursorrules",
     "copilot": "COPILOT.md",
     "continue": ".continuerules",
+    "bob": "BOB.md",
 }
 
 # Heuristics for auto-detecting which tools are active in a project
@@ -18,6 +19,7 @@ _TOOL_INDICATORS: dict[str, list[str]] = {
     "cursor": [".cursor", ".cursorrules"],
     "copilot": [".github"],
     "continue": [".continuerules"],
+    "bob": [".bob", "BOB.md"],
 }
 
 
@@ -68,6 +70,9 @@ def install_module(
         _install_rules(module_path, project_root, result)
         _patch_claude_md_add(module_path, project_root, result)
 
+    if "bob" in active_tools:
+        _install_bob_integration(module_path, project_root, result)
+
     for tool in active_tools:
         if tool in _CROSS_TOOL_FILES:
             _install_tool_file(tool, module_path, project_root, result)
@@ -97,6 +102,80 @@ def _install_tool_file(
     link = project_root / filename
     _create_symlink(src, link)
     result.tool_files.append(filename)
+
+
+def _install_bob_integration(
+    module_path: Path, project_root: Path, result: InstallResult
+) -> None:
+    """Install Bob Shell-specific files (modes, tools, servers, BOB.md)."""
+    bob_dir = project_root / ".bob"
+    
+    # Install modes if present
+    modes_src = module_path / "bob" / "modes"
+    if modes_src.is_dir():
+        modes_dst = bob_dir / "modes"
+        modes_dst.mkdir(parents=True, exist_ok=True)
+        for mode_file in sorted(modes_src.glob("*.yaml")):
+            link = modes_dst / mode_file.name
+            _create_symlink(mode_file, link)
+            result.tool_files.append(f".bob/modes/{mode_file.name}")
+    
+    # Install tools if present
+    tools_src = module_path / "bob" / "tools"
+    if tools_src.is_dir():
+        tools_dst = bob_dir / "tools"
+        tools_dst.mkdir(parents=True, exist_ok=True)
+        for tool_file in sorted(tools_src.glob("*.yaml")):
+            link = tools_dst / tool_file.name
+            _create_symlink(tool_file, link)
+            result.tool_files.append(f".bob/tools/{tool_file.name}")
+    
+    # Install MCP servers if present
+    servers_src = module_path / "bob" / "servers"
+    if servers_src.is_dir():
+        servers_dst = bob_dir / "servers"
+        servers_dst.mkdir(parents=True, exist_ok=True)
+        for server_file in sorted(servers_src.glob("*.json")):
+            link = servers_dst / server_file.name
+            _create_symlink(server_file, link)
+            result.tool_files.append(f".bob/servers/{server_file.name}")
+
+
+def _remove_bob_integration(
+    module_path: Path, project_root: Path, result: RemoveResult
+) -> None:
+    """Remove Bob Shell-specific files."""
+    bob_dir = project_root / ".bob"
+    
+    # Remove modes
+    modes_src = module_path / "bob" / "modes"
+    if modes_src.is_dir():
+        modes_dst = bob_dir / "modes"
+        for mode_file in sorted(modes_src.glob("*.yaml")):
+            link = modes_dst / mode_file.name
+            if link.is_symlink() and link.resolve() == mode_file.resolve():
+                link.unlink()
+                result.tool_files_removed.append(f".bob/modes/{mode_file.name}")
+    
+    # Remove tools
+    tools_src = module_path / "bob" / "tools"
+    if tools_src.is_dir():
+        tools_dst = bob_dir / "tools"
+        for tool_file in sorted(tools_src.glob("*.yaml")):
+            link = tools_dst / tool_file.name
+            if link.is_symlink() and link.resolve() == tool_file.resolve():
+                link.unlink()
+                result.tool_files_removed.append(f".bob/tools/{tool_file.name}")
+    
+    # Remove MCP servers
+    servers_src = module_path / "bob" / "servers"
+    if servers_src.is_dir():
+        servers_dst = bob_dir / "servers"
+        for server_file in sorted(servers_src.glob("*.json")):
+            link = servers_dst / server_file.name
+            if link.is_symlink() and link.resolve() == server_file.resolve():
+                link.unlink()
+                result.tool_files_removed.append(f".bob/servers/{server_file.name}")
 
 
 def _install_skills(module_path: Path, project_root: Path, result: InstallResult) -> None:
@@ -178,6 +257,9 @@ def remove_module(
         _remove_skills(module_path, project_root, result)
         _remove_rules(module_path, project_root, result)
         _patch_claude_md_remove(module_path, project_root, result)
+
+    if "bob" in active_tools:
+        _remove_bob_integration(module_path, project_root, result)
 
     for tool in active_tools:
         if tool in _CROSS_TOOL_FILES:

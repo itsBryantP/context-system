@@ -1,0 +1,173 @@
+name: docs
+version: 0.1.0
+description: Documentation
+tags:
+- design
+- what
+- configuration
+- error
+- file
+depends_on: []
+sources:
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/README.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/architecture.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/Caching_Inputs/caching_inputs.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/Caching_Inputs/caching_inputs_csd.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/Caching_Inputs/gcd_lcd_behaviour.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/cics_cmci.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/dcb_support.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/discovery.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/exec_parameters.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/extra_dds.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/resource_builder.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/unix_file_high_level_mechanism.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/cics/update_existing_csd_design.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/framework/cli_args.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/framework/default_logging_redesign.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/framework/passing_variables_to_config.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/framework/state.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/architecture/framework/system_symbols_design.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/development/code_base_overview.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/development/environment.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/development/pipeline.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/development/testing.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/principles/mechanisms.md
+  url: null
+  refresh: null
+- type: markdown
+  path: /Users/bpanyar/github/IBMZSoftware/zconfig/docs/principles/onboarding.md
+  url: null
+  refresh: null
+chunking:
+  strategy: heading
+  max_tokens: 500
+  overlap_tokens: 50
+  heading_level: 2
+  overrides:
+  - pattern: content/README.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__architecture.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__cics__Caching_Inputs__caching_inputs_csd.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__cics__Caching_Inputs__gcd_lcd_behaviour.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__cics__cics_cmci.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__cics__resource_builder.md
+    strategy: fixed
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__cics__unix_file_high_level_mechanism.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__framework__passing_variables_to_config.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__framework__state.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/architecture__framework__system_symbols_design.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/development__testing.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null
+  - pattern: content/principles__onboarding.md
+    strategy: definition
+    max_tokens: null
+    overlap_tokens: null
+    heading_level: null

@@ -1,0 +1,26 @@
+{
+  "name": "test-server",
+  "description": "A test MCP server for Bob Shell integration testing",
+  "type": "stdio",
+  "command": "python",
+  "args": [
+    "-m",
+    "test_server",
+    "--chunks",
+    ".context/chunks/bob-test-module.jsonl"
+  ],
+  "env": {
+    "PYTHONPATH": "${PROJECT_ROOT}",
+    "TEST_MODE": "true"
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": true,
+    "prompts": false
+  },
+  "settings": {
+    "timeout": 30000,
+    "retry": 3,
+    "cache_ttl": 300
+  }
+}

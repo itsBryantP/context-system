@@ -1,0 +1,34 @@
+name: Test Mode
+description: A test mode for Bob Shell integration testing
+slug: test-mode
+icon: 🧪
+color: purple
+
+tools:
+  - read_file
+  - list_files
+  - search_file_content
+
+context:
+  - type: file
+    path: BOB.md
+  - type: chunks
+    source: .context/chunks/bob-test-module.jsonl
+
+prompts:
+  system: |
+    You are in test mode for Bob Shell integration.
+    This mode is used to verify that custom modes are properly installed and loaded.
+
+settings:
+  max_tokens: 2000
+  temperature: 0.5
+  auto_approve_edits: false
+
+file_restrictions:
+  allow_patterns:
+    - "tests/**/*.py"
+    - "src/**/*.py"
+  deny_patterns:
+    - "**/*.pyc"
+    - "**/__pycache__/**"

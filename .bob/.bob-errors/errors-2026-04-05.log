@@ -1,0 +1,14 @@
+
+================================================================================
+ERROR LOGGED: 2026-04-05T23:18:39.964Z
+================================================================================
+Error Name: Error
+Error Message: Connection failed for 'box': MCP error -32001: Request timed out
+
+Stack Trace:
+Error: Connection failed for 'box': MCP error -32001: Request timed out
+    at qlr (file:///opt/homebrew/lib/node_modules/bobshell/bundle/bob.js:3502:10291)
+    at async txe.connect (file:///opt/homebrew/lib/node_modules/bobshell/bundle/bob.js:3502:13137)
+    at async file:///opt/homebrew/lib/node_modules/bobshell/bundle/bob.js:3502:17293
+================================================================================
+

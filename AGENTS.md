@@ -22,7 +22,7 @@ Bob Shell integration is planned. Core system is feature-complete.
 | 3 — Claude Code | ✅ Complete — skills, rules, CLAUDE.md integration |
 | 4 — Polish | ✅ Complete — definition chunker, dependencies, freshness, git URLs |
 | 5 — Pack | ✅ Complete — zero-config packaging |
-| 6 — Bob Shell | 🔄 Planned — modes, tools, BOB.md, MCP servers (`plans/active/BOB_PLAN.md`) |
+| 6 — Bob Shell | ✅ Complete — modes, tools, BOB.md, MCP servers, auto-detection, CLI integration |
 | 7 — Chunking quality | ✅ Complete — FixedChunker oversized-paragraph fix, orphan elimination, hierarchical-retrieval metadata, opt-in Contextual Retrieval |
 
 ---

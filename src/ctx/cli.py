@@ -299,7 +299,7 @@ def sync(module_path):
 @click.argument("module_path", type=click.Path(exists=True))
 @click.option("--project", "-p", default=".", type=click.Path(exists=True), help="Project root")
 @click.option("--tool", "tools", multiple=True,
-              type=click.Choice(["claude", "cursor", "copilot", "continue"]),
+              type=click.Choice(["claude", "cursor", "copilot", "continue", "bob"]),
               help="Tool(s) to install for. Repeatable. Defaults to auto-detect.")
 def add(module_path, project, tools):
     """Install a module's skills, rules, CLAUDE.md, and cross-framework files."""

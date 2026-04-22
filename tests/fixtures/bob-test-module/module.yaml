@@ -1,0 +1,10 @@
+name: bob-test-module
+version: 1.0.0
+description: Test module for Bob Shell integration
+tags:
+  - test
+  - bob
+chunking:
+  strategy: heading
+  max_tokens: 500
+  overlap_tokens: 50

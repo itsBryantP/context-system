@@ -1,0 +1,35 @@
+name: test-tool
+description: A simple test tool that echoes output
+category: testing
+version: 1.0.0
+
+parameters:
+  - name: message
+    type: string
+    required: true
+    description: Message to echo
+  - name: repeat
+    type: number
+    required: false
+    default: 1
+    description: Number of times to repeat the message
+
+implementation:
+  type: script
+  command: |
+    message="$1"
+    repeat="${2:-1}"
+    for i in $(seq 1 $repeat); do
+      echo "$message"
+    done
+
+execution:
+  timeout: 10
+  cache_ttl: 0
+
+permissions:
+  read_files:
+    - "tests/**/*.py"
+  execute_commands:
+    - "echo *"
+    - "seq *"

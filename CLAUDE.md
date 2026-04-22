@@ -5,7 +5,7 @@
 `ctx` is a Python CLI tool (`ctx-modules` package) for authoring and consuming **context modules** — portable units of knowledge with two output targets:
 
 1. **RAG pipelines** — chunked JSONL with structured metadata, ingestible by any vector store
-2. **AI coding tools** — native Claude Code integration (skills, rules, CLAUDE.md imports), extensible to Cursor, Copilot, etc.
+2. **AI coding tools** — native integration with Bob Shell, Claude Code, Cursor, Copilot, and Continue
 
 Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 
@@ -20,7 +20,8 @@ Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 | 3 — Claude Code | `ctx add` / `ctx remove` — skill/rule symlinks, CLAUDE.md patching |
 | 4 — Polish | definition chunker, dependency resolution, freshness tracking, git URLs, --tool flag |
 | 5 — Pack | `ctx pack` — zero-config packaging: scan, extract, auto-detect strategy/name/tags, chunk, output |
-| 6 — Chunking quality | ✅ FixedChunker oversized-paragraph fix, orphan-chunk elimination, hierarchical-retrieval metadata (`doc_title`, `has_code`, `language`, `prev_chunk_id`, `next_chunk_id`, `file_id`), opt-in Contextual Retrieval |
+| 6 — Bob Shell | ✅ modes, tools, BOB.md, MCP servers, auto-detection, CLI integration |
+| 7 — Chunking quality | ✅ FixedChunker oversized-paragraph fix, orphan-chunk elimination, hierarchical-retrieval metadata (`doc_title`, `has_code`, `language`, `prev_chunk_id`, `next_chunk_id`, `file_id`), opt-in Contextual Retrieval |
 
 ---
 
@@ -51,7 +52,7 @@ src/ctx/
 ├── git.py                  # parse_git_ref, resolve_git_module — clone/cache git modules
 └── integrations/
     ├── jsonl.py            # JSONL serialization and file writing
-    └── claude_code.py      # install_module / remove_module — symlinks, CLAUDE.md, cross-tool files
+    └── claude_code.py      # Cross-framework integration (Claude, Cursor, Copilot, Continue, Bob)
 tests/
 ├── conftest.py              # Autouse fixture — redirects Path.home() to a tmp dir per test
 ├── test_chunker.py
@@ -63,6 +64,7 @@ tests/
 ├── test_schema.py           # Pydantic model edge-case tests
 ├── test_pack.py             # ctx pack pipeline (scan, extract, chunk, output)
 ├── test_contextualize.py    # Contextual Retrieval — mocked Anthropic client
+├── test_bob_integration.py  # Bob Shell integration tests
 ├── test_deps.py
 ├── test_freshness.py
 ├── test_git.py
@@ -117,7 +119,8 @@ ctx build                                   # build all modules (skips unchanged
 ctx build --force                           # rebuild even if content unchanged
 ctx validate ./my-module                    # validate module structure
 ctx add ./my-module                         # install module (auto-detects tools)
-ctx add ./my-module --tool cursor --tool claude  # install for specific tools
+ctx add ./my-module --tool bob              # install for Bob Shell only
+ctx add ./my-module --tool claude --tool bob # install for multiple tools
 ctx remove my-module-name                   # remove module by name
 ctx extract spec.pdf --into ./my-module     # ingest a source file
 ctx sync ./my-module                        # re-extract all sources in module.yaml
@@ -152,7 +155,13 @@ Repos are cloned once to `~/.ctx/cache/<hash>/` and reused. Format: `repo[#subdi
 Modules declare `depends_on: [module-name@version]` in `module.yaml`. `ctx build` emits a warning (not error) for any unmet dependencies. Version constraints are recorded but not enforced yet.
 
 ### Cross-framework tool files
-`ctx add --tool cursor|copilot|continue` symlinks tool-specific files (`.cursorrules`, `COPILOT.md`, `.continuerules`) from the module to the project root. Without `--tool`, auto-detects based on project structure (`.cursor/`, `.github/`, `.continuerules`).
+`ctx add --tool bob|cursor|copilot|continue` symlinks tool-specific files from the module to the project. Without `--tool`, auto-detects based on project structure.
+
+**Bob Shell**: Installs `BOB.md` (symlinked or appended), modes (`bob/modes/*.yaml` → `.bob/modes/`), tools (`bob/tools/*.yaml` → `.bob/tools/`), and MCP servers (`bob/servers/*.json` → `.bob/servers/`). Auto-detected via `.bob/` directory or `BOB.md` file.
+
+**Claude Code**: Symlinks skills/rules to `.claude/`, patches CLAUDE.md imports.
+
+**Cursor/Copilot/Continue**: Symlinks `.cursorrules`, `COPILOT.md`, `.continuerules` to project root.
 
 ### Module Schema (module.yaml)
 Validated by `ModuleConfig` Pydantic model in `schema.py`. Only `name` is required (`version` defaults to `"0.1.0"`, `description` to `""`). Chunking defaults to `heading` strategy at H2 level, 500 max tokens, 50 overlap. Optional `chunking.contextualize: true` (with `contextualize_model: "claude-haiku-4-5"`) enables Contextual Retrieval — requires the `contextualize` extra (`uv pip install 'ctx-modules[contextualize]'`) and `ANTHROPIC_API_KEY`.
