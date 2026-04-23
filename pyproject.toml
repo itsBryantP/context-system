@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ctx-modules"
-version = "0.1.0"
+version = "0.1.1"
 description = "Context module system for RAG and AI coding tools"
 requires-python = ">=3.11"
 dependencies = [
