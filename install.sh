@@ -129,10 +129,32 @@ heading "4. Installing ctx-modules"
 EXTRAS="extractors"
 $DEV && EXTRAS="extractors,dev"
 
+# Read the currently-installed version (empty string if not installed).
+INSTALLED_VERSION=$("$PYTHON" -c 'from importlib.metadata import version, PackageNotFoundError
+try:
+    print(version("ctx-modules"))
+except PackageNotFoundError:
+    pass' 2>/dev/null || true)
+
+# In local mode, read the declared version from pyproject.toml. Mismatch with
+# the installed version means a bump happened — force a dist-info refresh, since
+# `uv pip install -e .` otherwise keeps the stale dist-info and `ctx --version`
+# (which reads importlib.metadata) lags behind the source.
+REINSTALL_ARGS=()
 if [[ "$INSTALL_MODE" == "local" ]]; then
-  uv pip install --python "$PYTHON" -e ".[$EXTRAS]"
+  DECLARED_VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+  if [[ -n "$INSTALLED_VERSION" && "$INSTALLED_VERSION" != "$DECLARED_VERSION" ]]; then
+    info "Version bump detected ($INSTALLED_VERSION → $DECLARED_VERSION) — forcing dist-info refresh"
+    REINSTALL_ARGS=(--reinstall-package ctx-modules)
+  elif [[ -n "$INSTALLED_VERSION" ]]; then
+    info "ctx-modules $INSTALLED_VERSION already installed — uv will skip unchanged packages"
+  fi
+fi
+
+if [[ "$INSTALL_MODE" == "local" ]]; then
+  uv pip install --python "$PYTHON" ${REINSTALL_ARGS[@]+"${REINSTALL_ARGS[@]}"} -e ".[$EXTRAS]"
 else
-  uv pip install --python "$PYTHON" "ctx-modules[$EXTRAS]"
+  uv pip install --python "$PYTHON" ${REINSTALL_ARGS[@]+"${REINSTALL_ARGS[@]}"} "ctx-modules[$EXTRAS]"
 fi
 
 info "ctx-modules installed with extras: $EXTRAS"
