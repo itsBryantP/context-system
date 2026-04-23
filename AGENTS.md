@@ -225,6 +225,12 @@ Repos are cloned once to `~/.ctx/cache/<hash>/` and reused. Format: `repo[#subdi
 | `.html`, `.htm` | `html` | markdownify |
 | `.yaml`, `.yml`, `.json` | `structured` | Fenced code block |
 
+### Output layout of `ctx pack`
+`write_module` emits `module.yaml`, `content/`, `chunks/<name>.jsonl`, and
+`skills/<name>/SKILL.md`. The generated SKILL.md (YAML frontmatter + manifest
+of content files) lets `ctx pack --install --tool bob|claude` symlink the packed
+module into `.bob/skills/` or `.claude/skills/` without any extra authoring.
+
 ### Cross-framework tool files
 `ctx add --tool bob|cursor|copilot|continue` symlinks tool-specific files from the module to the project. Without `--tool`, auto-detects based on project structure.
 

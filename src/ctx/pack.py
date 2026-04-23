@@ -372,16 +372,41 @@ def infer_name(input_dir: Path, override: str | None = None) -> str:
     return kebab_case(input_dir.name)
 
 
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_filename_artifact(text: str) -> bool:
+    """True when an H1 candidate is almost certainly a filename leak (UUID, hash,
+    or long unspaced slug) rather than a human-authored title. The PDF and
+    plaintext extractors stamp the file stem as H1, so documents with opaque
+    filenames would otherwise surface that stem as the module description."""
+    if _UUID_RE.match(text):
+        return True
+    # Long, whitespace-free strings are almost always file stems, not titles.
+    if " " not in text and len(text) >= 20:
+        return True
+    return False
+
+
 def infer_description(md_contents: list[str], dir_name: str) -> str:
     """Return a one-line description.
 
-    Uses the text of the first H1 heading found across all documents.
-    Falls back to a generic string if no H1 is found.
+    Uses the first H1 that looks human-authored — filename-artifact H1s
+    (UUIDs, hex hashes, long unspaced slugs) are skipped since extractors
+    stamp the file stem as H1 when no real title exists in the source.
+    Falls back to a generic string if no usable H1 is found.
     """
     for content in md_contents:
         m = re.search(r"^# (.+)", content, re.MULTILINE)
-        if m:
-            return m.group(1).strip()
+        if not m:
+            continue
+        candidate = m.group(1).strip()
+        if _looks_like_filename_artifact(candidate):
+            continue
+        return candidate
     return f"Context module packed from {dir_name}"
 
 
@@ -536,6 +561,8 @@ def write_module(
             module.yaml          — auto-detected config + sources + overrides
             content/             — extracted .md files
             chunks/<name>.jsonl  — pre-built JSONL
+            skills/<name>/SKILL.md — generated so `ctx add --tool bob|claude`
+                                     can symlink this module as a skill
     """
     import yaml  # noqa: PLC0415
     from ctx.schema import (  # noqa: PLC0415
@@ -597,6 +624,59 @@ def write_module(
     )
 
     write_jsonl(chunks, output_path / "chunks" / f"{name}.jsonl")
+
+    _write_skill(output_path, name, description, extracted_files)
+
+
+def _write_skill(
+    output_path: Path, name: str, description: str, extracted_files: list[ExtractedFile]
+) -> None:
+    """Emit skills/<name>/SKILL.md so --tool bob / claude can symlink the module
+    as a discoverable skill. The body points to content/ via paths that resolve
+    correctly whether SKILL.md is read in place or through a symlinked skill dir."""
+    skill_dir = output_path / "skills" / name
+    skill_dir.mkdir(parents=True)
+
+    effective_description = description or f"Knowledge bundle packed from {len(extracted_files)} files"
+
+    lines = [
+        "---",
+        f"name: {name}",
+        f"description: {_yaml_scalar(effective_description)}",
+        "---",
+        "",
+        f"Bundle of {len(extracted_files)} extracted document(s). "
+        "Source markdown is in the module's `content/` directory "
+        "(two levels up from this file):",
+        "",
+    ]
+    for ef in extracted_files:
+        summary = _first_heading(ef.md_path) or ef.original_path.name
+        lines.append(f"- `../../content/{ef.md_path.name}` — {summary}")
+    lines.append("")
+
+    (skill_dir / "SKILL.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _yaml_scalar(value: str) -> str:
+    """Quote a YAML scalar only when necessary (contains colons, leading/trailing
+    whitespace, or other indicator chars). Keeps simple descriptions unquoted."""
+    if not value:
+        return '""'
+    if any(ch in value for ch in ':#\n"\'') or value != value.strip():
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return value
+
+
+def _first_heading(md_path: Path) -> str | None:
+    try:
+        for line in md_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                return stripped.lstrip("#").strip() or None
+    except OSError:
+        return None
+    return None
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────

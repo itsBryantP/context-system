@@ -199,6 +199,12 @@ scan_directory(input_dir)
   → write_module / pack (output modes)
 ```
 
+`write_module` emits `module.yaml`, `content/`, `chunks/<name>.jsonl`, and
+`skills/<name>/SKILL.md`. The generated SKILL.md (YAML frontmatter + manifest
+of content files) lets `ctx add --tool bob|claude` symlink the packed module
+as a discoverable skill into `.bob/skills/` or `.claude/skills/` without any
+extra authoring step.
+
 Supported file types in `ctx pack` (`_EXT_MAP` in `pack.py`):
 
 | Extension | Classification | Notes |

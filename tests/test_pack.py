@@ -657,6 +657,32 @@ class TestInferDescription:
         contents = ["## Not An H1\n\n# Actual H1\n"]
         assert infer_description(contents, "x") == "Actual H1"
 
+    def test_skips_uuid_h1(self):
+        contents = [
+            "# 74f7ce84-fd31-4815-84f2-e12c6f35e74a\n\nBody.\n",
+            "# Remote Playbook\n\nBody.\n",
+        ]
+        assert infer_description(contents, "docs") == "Remote Playbook"
+
+    def test_skips_long_unspaced_slug(self):
+        contents = [
+            "# a1b2c3d4e5f6a7b8c9d0e1f2\n\nBody.\n",
+            "# Real Title\n\nBody.\n",
+        ]
+        assert infer_description(contents, "docs") == "Real Title"
+
+    def test_falls_back_when_all_h1s_are_artifacts(self):
+        contents = [
+            "# 74f7ce84-fd31-4815-84f2-e12c6f35e74a\n\nBody.\n",
+            "# 12345678-1234-1234-1234-123456789abc\n\nBody.\n",
+        ]
+        assert infer_description(contents, "docs") == "Context module packed from docs"
+
+    def test_short_single_word_h1_is_kept(self):
+        # "Overview" is a legitimate single-word title, shorter than the 20-char cutoff.
+        contents = ["# Overview\n\nBody.\n"]
+        assert infer_description(contents, "docs") == "Overview"
+
 
 # ── infer_tags ────────────────────────────────────────────────────────────────
 
@@ -962,6 +988,60 @@ class TestWriteModule:
         source_types = {s["type"] for s in data.get("sources", [])}
         assert "pdf" in source_types
         assert "markdown" in source_types
+
+
+class TestWriteModuleSkill:
+    def _make_extracted(self, tmp_path: Path, name: str, content: str) -> ExtractedFile:
+        orig = tmp_path / "src" / name
+        orig.parent.mkdir(exist_ok=True)
+        orig.write_text(content)
+        md = tmp_path / "tmp" / (name + ".extracted.md")
+        md.parent.mkdir(exist_ok=True)
+        md.write_text(content)
+        return ExtractedFile(original_path=orig, md_path=md, classification="markdown")
+
+    def test_emits_skill_md_with_frontmatter(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "guide.md", "# Guide\n\nHow to.\n")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = chunk_files([ef], strategies, "my-mod", [], input_dir=tmp_path / "src")
+        out = tmp_path / "output"
+        write_module(out, "my-mod", "The description", [], [ef], strategies, chunks, 500, 50)
+
+        skill_md = out / "skills" / "my-mod" / "SKILL.md"
+        assert skill_md.is_file()
+        text = skill_md.read_text()
+        assert text.startswith("---\n")
+        assert "name: my-mod" in text
+        assert "description: " in text
+        assert "The description" in text
+        assert "guide.md" in text  # manifest entry
+
+    def test_skill_description_falls_back_when_empty(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "a.md", "# A\n\nx.\n")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = chunk_files([ef], strategies, "m", [], input_dir=tmp_path / "src")
+        out = tmp_path / "output"
+        write_module(out, "m", "", [], [ef], strategies, chunks, 500, 50)
+
+        text = (out / "skills" / "m" / "SKILL.md").read_text()
+        assert "Knowledge bundle packed from 1 files" in text
+
+    def test_skill_description_with_colon_is_quoted(self, tmp_path):
+        from ctx.schema import ChunkingStrategy
+        ef = self._make_extracted(tmp_path, "a.md", "# A\n\nx.\n")
+        strategies = {ef.md_path: ChunkingStrategy.HEADING}
+        chunks = chunk_files([ef], strategies, "m", [], input_dir=tmp_path / "src")
+        out = tmp_path / "output"
+        write_module(out, "m", "API: v2 reference", [], [ef], strategies, chunks, 500, 50)
+
+        text = (out / "skills" / "m" / "SKILL.md").read_text()
+        # Must still parse as valid YAML frontmatter
+        import yaml as _yaml
+        fm_end = text.index("---\n", 4)
+        fm = _yaml.safe_load(text[4:fm_end])
+        assert fm["description"] == "API: v2 reference"
 
 
 # ── pack orchestrator ─────────────────────────────────────────────────────────
