@@ -213,6 +213,50 @@ def test_bob_symlink_replacement(tmp_path):
     assert (tmp_path / "BOB.md").is_symlink()
 
 
+def test_bob_installs_skills(tmp_path):
+    """Bob install should symlink each module skill under .bob/skills/."""
+    module_path = Path(__file__).parent / "fixtures" / "bob-test-module"
+
+    result = install_module(module_path, tmp_path, tools=["bob"])
+
+    skill_link = tmp_path / ".bob" / "skills" / "test-skill"
+    assert skill_link.is_symlink()
+    assert skill_link.resolve() == (module_path / "skills" / "test-skill").resolve()
+    # The SKILL.md inside is reachable via the symlink
+    assert (skill_link / "SKILL.md").exists()
+    assert ".bob/skills/test-skill" in result.tool_files
+    # Claude skills should NOT be installed when only bob is selected
+    assert not (tmp_path / ".claude" / "skills" / "test-skill").exists()
+
+
+def test_bob_and_claude_share_skills(tmp_path):
+    """With both tools active, the same skills/ tree feeds .claude/skills and .bob/skills."""
+    module_path = Path(__file__).parent / "fixtures" / "bob-test-module"
+
+    result = install_module(module_path, tmp_path, tools=["claude", "bob"])
+
+    claude_link = tmp_path / ".claude" / "skills" / "test-skill"
+    bob_link = tmp_path / ".bob" / "skills" / "test-skill"
+    assert claude_link.is_symlink()
+    assert bob_link.is_symlink()
+    assert claude_link.resolve() == bob_link.resolve()
+    assert "test-skill" in result.skills
+    assert ".bob/skills/test-skill" in result.tool_files
+
+
+def test_bob_removes_skills(tmp_path):
+    """Removing a bob install should tear down .bob/skills entries."""
+    module_path = Path(__file__).parent / "fixtures" / "bob-test-module"
+
+    install_module(module_path, tmp_path, tools=["bob"])
+    assert (tmp_path / ".bob" / "skills" / "test-skill").is_symlink()
+
+    result = remove_module(module_path, tmp_path, tools=["bob"])
+
+    assert not (tmp_path / ".bob" / "skills" / "test-skill").exists()
+    assert ".bob/skills/test-skill" in result.tool_files_removed
+
+
 def test_bob_removal_with_missing_files(tmp_path):
     """Test removal when some files are already missing."""
     module_path = Path(__file__).parent / "fixtures" / "bob-test-module"

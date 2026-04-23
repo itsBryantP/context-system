@@ -93,6 +93,7 @@ Bob Shell uses:
 - **Modes** — Specialized interaction contexts (`.bob/modes/*.yaml`)
 - **Tools** — Custom capabilities (`.bob/tools/*.yaml`)
 - **MCP Servers** — Model Context Protocol servers (`.bob/servers/*.json`)
+- **Skills** — Reusable instruction sets (`.bob/skills/<name>/SKILL.md`); shared tree with Claude Code skills
 - **BOB.md** — Context file (like CLAUDE.md)
 
 ### Module Structure for Bob Shell
@@ -104,7 +105,10 @@ api-patterns/
 │   ├── overview.md
 │   └── patterns.md
 ├── BOB.md                   # Bob Shell context
-└── bob/                     # Bob Shell integration
+├── skills/                  # Shared skills tree (Claude + Bob)
+│   └── api-review/
+│       └── SKILL.md
+└── bob/                     # Bob-specific integration
     ├── modes/               # Custom modes
     │   └── api-review.yaml
     ├── tools/               # Custom tools
@@ -133,6 +137,7 @@ When installing for Bob Shell:
 2. **Modes** → `bob/modes/*.yaml` → `.bob/modes/`
 3. **Tools** → `bob/tools/*.yaml` → `.bob/tools/`
 4. **MCP Servers** → `bob/servers/*.json` → `.bob/servers/`
+5. **Skills** → `skills/<name>/` → `.bob/skills/<name>/` (same tree also fed to `.claude/skills/` when Claude is active)
 
 ### Detection Heuristics
 
@@ -339,7 +344,11 @@ Create `bob/tools/search-pattern.yaml` with tool configuration.
 
 Create `bob/servers/kb.json` with server configuration.
 
-### 5. Install
+### 5. Create Skills (Optional)
+
+Create `skills/<name>/SKILL.md` with YAML frontmatter (`name`, `description`) plus instructions. The same directory is symlinked into both `.claude/skills/` and `.bob/skills/` depending on which tools are active — no duplication needed.
+
+### 6. Install
 
 ```bash
 ctx add ./my-module --tool bob
@@ -349,15 +358,17 @@ ctx add ./my-module --tool bob
 
 ## Keeping Configuration Current
 
-When you make or observe changes that affect project structure, tooling, or conventions, update the relevant config files in the same session:
+When you make or observe changes that affect project structure, tooling, or conventions, update the relevant config files in the same session. **`AGENTS.md` and `CLAUDE.md` must stay in sync** — any structural/convention edit to one requires the mirror edit to the other.
 
 | Change | Update |
 |--------|--------|
-| New CLI command, chunker, extractor, or integration | `AGENTS.md` — Project Layout, Key Conventions |
-| Phase milestone reached | `AGENTS.md` — Implementation Status table |
-| New dev dependency or optional extra | `AGENTS.md` — Dependencies table |
-| New Bob Shell feature implemented | `AGENTS.md` — Bob Shell Integration section |
-| New environment constraint | Update all relevant docs |
+| New CLI command, chunker, extractor, or integration | `AGENTS.md` + `CLAUDE.md` — Project Layout, Key Conventions |
+| Phase milestone reached | `AGENTS.md` + `CLAUDE.md` — Implementation Status table |
+| New dev dependency or optional extra | `AGENTS.md` + `CLAUDE.md` — Dependencies table |
+| New Bob Shell / tool-integration feature | `AGENTS.md` + `CLAUDE.md` — Bob Shell / integration sections |
+| New safe command needed | `.claude/settings.json` — add to `allow` |
+| New destructive command identified | `.claude/settings.json` — add to `deny` |
+| New environment constraint | Both files + settings |
 
 ---
 

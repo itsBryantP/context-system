@@ -140,6 +140,19 @@ def _install_bob_integration(
             _create_symlink(server_file, link)
             result.tool_files.append(f".bob/servers/{server_file.name}")
 
+    # Install skills if present — shared with Claude Code at the module level;
+    # Bob expects each skill as a directory containing SKILL.md under .bob/skills/.
+    skills_src = module_path / "skills"
+    if skills_src.is_dir():
+        skills_dst = bob_dir / "skills"
+        skills_dst.mkdir(parents=True, exist_ok=True)
+        for skill_dir in sorted(skills_src.iterdir()):
+            if not skill_dir.is_dir():
+                continue
+            link = skills_dst / skill_dir.name
+            _create_symlink(skill_dir, link)
+            result.tool_files.append(f".bob/skills/{skill_dir.name}")
+
 
 def _remove_bob_integration(
     module_path: Path, project_root: Path, result: RemoveResult
@@ -176,6 +189,18 @@ def _remove_bob_integration(
             if link.is_symlink() and link.resolve() == server_file.resolve():
                 link.unlink()
                 result.tool_files_removed.append(f".bob/servers/{server_file.name}")
+
+    # Remove skills
+    skills_src = module_path / "skills"
+    if skills_src.is_dir():
+        skills_dst = bob_dir / "skills"
+        for skill_dir in sorted(skills_src.iterdir()):
+            if not skill_dir.is_dir():
+                continue
+            link = skills_dst / skill_dir.name
+            if link.is_symlink() and link.resolve() == skill_dir.resolve():
+                link.unlink()
+                result.tool_files_removed.append(f".bob/skills/{skill_dir.name}")
 
 
 def _install_skills(module_path: Path, project_root: Path, result: InstallResult) -> None:

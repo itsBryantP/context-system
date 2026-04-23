@@ -157,7 +157,7 @@ Modules declare `depends_on: [module-name@version]` in `module.yaml`. `ctx build
 ### Cross-framework tool files
 `ctx add --tool bob|cursor|copilot|continue` symlinks tool-specific files from the module to the project. Without `--tool`, auto-detects based on project structure.
 
-**Bob Shell**: Installs `BOB.md` (symlinked or appended), modes (`bob/modes/*.yaml` → `.bob/modes/`), tools (`bob/tools/*.yaml` → `.bob/tools/`), and MCP servers (`bob/servers/*.json` → `.bob/servers/`). Auto-detected via `.bob/` directory or `BOB.md` file.
+**Bob Shell**: Installs `BOB.md` (symlinked or appended), modes (`bob/modes/*.yaml` → `.bob/modes/`), tools (`bob/tools/*.yaml` → `.bob/tools/`), MCP servers (`bob/servers/*.json` → `.bob/servers/`), and skills (`skills/<name>/` → `.bob/skills/<name>/`). The `skills/` tree is shared with Claude Code — each `SKILL.md` directory is symlinked into `.claude/skills/` and/or `.bob/skills/` depending on which tools are active. Auto-detected via `.bob/` directory or `BOB.md` file.
 
 **Claude Code**: Symlinks skills/rules to `.claude/`, patches CLAUDE.md imports.
 
@@ -222,18 +222,19 @@ To support a new file type in `ctx pack`:
 
 ## Keeping Configuration Current
 
-When you make or observe changes that affect project structure, tooling, or conventions, update the relevant config files in the same session — don't defer it:
+When you make or observe changes that affect project structure, tooling, or conventions, update the relevant config files in the same session — don't defer it. **`CLAUDE.md` and `AGENTS.md` must stay in sync** — any structural/convention edit to one requires the mirror edit to the other.
 
 | Change | Update |
 |--------|--------|
-| New CLI command, chunker, extractor, or integration | `CLAUDE.md` — Project Layout, Key Conventions |
-| Phase milestone reached (e.g. Phase 2 complete) | `CLAUDE.md` — Current State table |
-| New dev dependency or optional extra added to `pyproject.toml` | `CLAUDE.md` — Dependencies table |
+| New CLI command, chunker, extractor, or integration | `CLAUDE.md` + `AGENTS.md` — Project Layout, Key Conventions |
+| Phase milestone reached (e.g. Phase 2 complete) | `CLAUDE.md` + `AGENTS.md` — Implementation Status table |
+| New dev dependency or optional extra added to `pyproject.toml` | `CLAUDE.md` + `AGENTS.md` — Dependencies table |
+| New Bob Shell / tool-integration feature | `CLAUDE.md` + `AGENTS.md` — integration sections |
 | New safe command needed (e.g. new test runner, linter) | `.claude/settings.json` — add to `allow` |
 | New destructive command identified | `.claude/settings.json` — add to `deny` |
-| New environment constraint (Python version bump, new tool in use) | both files |
+| New environment constraint (Python version bump, new tool in use) | `CLAUDE.md` + `AGENTS.md` + settings |
 
-The goal is that `CLAUDE.md` and `.claude/settings.json` always reflect the current state of the project — not a snapshot from when they were first written.
+The goal is that `CLAUDE.md`, `AGENTS.md`, and `.claude/settings.json` always reflect the current state of the project — not a snapshot from when they were first written.
 
 ---
 
