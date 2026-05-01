@@ -162,7 +162,7 @@ info "ctx-modules installed with extras: $EXTRAS"
 # Verify extractor packages are importable from the target Python.
 # uv pip may install into a managed venv that differs from the Python used
 # to run ctx — if any package is missing, fall back to pip install directly.
-EXTRACTOR_PKGS=("pymupdf" "python-pptx" "markdownify")
+EXTRACTOR_PKGS=("pymupdf" "python-pptx" "markdownify" "docling")
 MISSING=()
 for pkg in "${EXTRACTOR_PKGS[@]}"; do
   import_name="${pkg//-/_}"   # python-pptx → python_pptx, etc.
