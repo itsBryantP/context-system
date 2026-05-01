@@ -11,6 +11,49 @@ Full spec: `SPEC.md` | Usage guide + examples: `README.md`
 
 ---
 
+## Gantry Workflow
+
+This project uses **Gantry** as its coordination layer. Gantry helps agents work together through:
+
+### Workstream Tokens
+
+Canonical tokens defined in `docs/dev/workstreams.yaml` identify logical work areas:
+- `extractor/docx` — Word document extraction
+- `chunker/quality` — Chunking improvements
+- `integration/bob` — Bob Shell integration
+- `docs/spec` — Feature specifications
+
+Use tokens in:
+- **Branches**: `feat/extractor/docx-support`
+- **Commits**: `feat(extractor/docx): add profile icon filtering`
+- **Issues/PRs**: Apply `workstream:extractor/docx` label
+
+### Quality Gates
+
+Before merging, verify:
+1. **tests_pass** — `pytest` succeeds
+2. **test_coverage** — `pytest --cov=src/ctx --cov-fail-under=90` passes
+3. **docs_updated** — AGENTS.md and CLAUDE.md stay in sync
+4. **spec_exists** — New features have specs in `specs/features/`
+
+### Roles
+
+- **feature_developer** — Implements features, writes tests, updates docs
+- **bug_fixer** — Fixes bugs, adds regression tests
+- **documenter** — Updates documentation and specs
+- **integrator** — Adds tool integrations (Bob, Claude, etc.)
+
+### Semantic IDs
+
+Commits use conventional format: `<type>(<workstream>): <description>`
+- `feat(extractor/docx): add Docling-based extraction`
+- `fix(chunker/heading): eliminate orphan headings`
+- `docs(spec): add DOCX support specification`
+
+**Migration**: Existing issues/PRs without workstream labels require manual review before backfill. Use `gantry` commands to suggest tokens based on file paths.
+
+---
+
 ## Implementation Status
 
 | Phase | What was delivered |

@@ -1,0 +1,24 @@
+{
+  "name": "@hashicorp/gantry-opencode-plugin-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local OpenCode plugin for Gantry coordination workflows.",
+  "main": "src/plugin.ts",
+  "files": [
+    "src",
+    "vendor",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.3.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.3"
+  }
+}

@@ -1,0 +1,201 @@
+# Workstream Token Manifest for context-system (ctx)
+#
+# This file defines canonical workstream tokens for the ctx project.
+# Gantry uses these tokens to coordinate work across agents, track progress,
+# and maintain semantic IDs for issues, PRs, and commits.
+#
+# ## What are workstream tokens?
+#
+# Workstream tokens are short, memorable identifiers (e.g., `extractor/docx`,
+# `chunker/quality`) that represent logical units of work. They appear in:
+# - Branch names: `feat/extractor/docx-support`
+# - Commit messages: `feat(extractor/docx): add profile icon filtering`
+# - Issue labels: `workstream:extractor/docx`
+# - PR titles: `[extractor/docx] Add .docx extraction via Docling`
+#
+# ## How to use this file
+#
+# 1. **Review the proposed tokens below** — Do they match your mental model
+#    of the project's work areas?
+# 2. **Confirm or modify** — Add, remove, or rename tokens as needed
+# 3. **Commit this file** — Once approved, Gantry will use it as the source
+#    of truth for workstream coordination
+#
+# ## Token structure
+#
+# Each token has:
+# - `token`: Short identifier (lowercase, slash-separated for hierarchy)
+# - `name`: Human-readable name
+# - `description`: Brief explanation of scope
+# - `owner` (optional): Team or person responsible
+# - `status`: active, planned, deprecated
+#
+# ## Proposed tokens for ctx project
+#
+# Based on the project structure (src/ctx/, specs/, plans/), here are
+# suggested workstream tokens. Please review and confirm:
+
+workstreams:
+  # Core infrastructure
+  - token: core/schema
+    name: Schema & Configuration
+    description: Pydantic models, module.yaml, config.yaml validation
+    status: active
+
+  - token: core/cli
+    name: CLI Interface
+    description: Click commands, argument parsing, user-facing commands
+    status: active
+
+  - token: core/module
+    name: Module System
+    description: Module loading, validation, dependency resolution
+    status: active
+
+  # Extractors (content ingestion)
+  - token: extractor/pdf
+    name: PDF Extraction
+    description: pdftotext, PyMuPDF fallback, PDF content extraction
+    status: active
+
+  - token: extractor/pptx
+    name: PowerPoint Extraction
+    description: python-pptx, slide content extraction
+    status: active
+
+  - token: extractor/docx
+    name: Word Document Extraction
+    description: Docling-based .docx extraction, image filtering
+    status: planned
+
+  - token: extractor/markdown
+    name: Markdown Extraction
+    description: Frontmatter stripping, passthrough processing
+    status: active
+
+  - token: extractor/url
+    name: URL Extraction
+    description: Web content fetching, markdownify conversion
+    status: active
+
+  - token: extractor/boxnote
+    name: Box Notes Extraction
+    description: ProseMirror JSON parsing, Box Notes support
+    status: active
+
+  # Chunking strategies
+  - token: chunker/heading
+    name: Heading-Based Chunking
+    description: Semantic chunking by markdown headings, orphan elimination
+    status: active
+
+  - token: chunker/fixed
+    name: Fixed-Size Chunking
+    description: Token-based sliding window, oversized paragraph splitting
+    status: active
+
+  - token: chunker/definition
+    name: Definition Chunking
+    description: One chunk per term, glossary-style chunking
+    status: active
+
+  - token: chunker/quality
+    name: Chunking Quality
+    description: Metadata enrichment, hierarchical retrieval, contextual retrieval
+    status: active
+
+  # Integration targets
+  - token: integration/bob
+    name: Bob Shell Integration
+    description: Modes, tools, MCP servers, BOB.md, auto-detection
+    status: active
+
+  - token: integration/claude
+    name: Claude Code Integration
+    description: Skills, rules, CLAUDE.md, cross-framework support
+    status: active
+
+  - token: integration/rag
+    name: RAG Pipeline Integration
+    description: JSONL output, vector store compatibility, chunk metadata
+    status: active
+
+  # Features
+  - token: feature/pack
+    name: Zero-Config Packaging
+    description: ctx pack command, directory scanning, auto-detection
+    status: active
+
+  - token: feature/git
+    name: Git URL Modules
+    description: Remote module resolution, caching, git:// URLs
+    status: active
+
+  - token: feature/freshness
+    name: Freshness Tracking
+    description: Hash-based skip logic, incremental builds
+    status: active
+
+  - token: feature/deps
+    name: Dependency Management
+    description: Module dependency validation, depends_on checking
+    status: active
+
+  # Testing & quality
+  - token: test/unit
+    name: Unit Tests
+    description: Component-level tests, >90% coverage target
+    status: active
+
+  - token: test/integration
+    name: Integration Tests
+    description: End-to-end workflows, CLI tests, >80% coverage target
+    status: active
+
+  - token: test/fixtures
+    name: Test Fixtures
+    description: Sample modules, test data, fixture management
+    status: active
+
+  # Documentation
+  - token: docs/spec
+    name: Specifications
+    description: Feature specs, architecture docs, design decisions
+    status: active
+
+  - token: docs/user
+    name: User Documentation
+    description: README, usage guides, troubleshooting
+    status: active
+
+  - token: docs/dev
+    name: Developer Documentation
+    description: AGENTS.md, CLAUDE.md, development setup
+    status: active
+
+  # Infrastructure
+  - token: infra/ci
+    name: CI/CD Pipeline
+    description: GitHub Actions, test automation, release workflow
+    status: active
+
+  - token: infra/deps
+    name: Dependency Management
+    description: pyproject.toml, uv.lock, install.sh
+    status: active
+
+  - token: infra/release
+    name: Release Management
+    description: Versioning, PyPI publishing, changelog
+    status: active
+
+# Workstream hierarchy rules:
+# - Use slash (/) for logical grouping: extractor/pdf, chunker/heading
+# - Keep tokens short (2-3 segments max)
+# - Use lowercase with hyphens for multi-word segments
+# - Avoid deep nesting (prefer flat structure)
+#
+# Migration notes:
+# - Existing issues/PRs without workstream labels can be backfilled
+# - Gantry will suggest tokens based on file paths and commit history
+# - Manual review recommended before applying semantic IDs

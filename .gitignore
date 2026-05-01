@@ -12,6 +12,12 @@ venv/
 # ctx output
 .context/chunks/
 
+# Gantry-managed skills
+.claude/skills/
+.bob/skills/
+.codex/skills/
+.opencode/skills/
+
 # IDE
 .vscode/
 .idea/

@@ -1,0 +1,228 @@
+# Gantry Configuration for context-system (ctx)
+#
+# This file configures Gantry's coordination layer for the ctx project.
+# Gantry helps agents work together by:
+# - Tracking workstreams via canonical tokens
+# - Enforcing quality gates before merging
+# - Maintaining semantic IDs for issues/PRs/commits
+# - Coordinating multi-agent workflows
+
+# Project metadata
+project:
+  name: context-system
+  description: Context module system for RAG and AI coding tools
+  repository: https://github.com/itsBryantP/context-system
+  
+# Workstream manifest location
+workstreams:
+  manifest: docs/dev/workstreams.yaml
+  
+# Quality gates (enforced before merge)
+quality_gates:
+  # Code quality
+  - name: tests_pass
+    description: All tests must pass
+    command: pytest
+    required: true
+    
+  - name: test_coverage
+    description: Maintain >90% unit test coverage
+    command: pytest --cov=src/ctx --cov-report=term-missing --cov-fail-under=90
+    required: true
+    
+  - name: type_check
+    description: Type checking with mypy (when configured)
+    command: mypy src/ctx
+    required: false  # Not yet configured
+    
+  # Documentation
+  - name: docs_updated
+    description: AGENTS.md and CLAUDE.md stay in sync
+    type: manual
+    required: true
+    evidence: |
+      Verify that structural changes to AGENTS.md are mirrored in CLAUDE.md
+      
+  - name: spec_exists
+    description: New features have specs in specs/features/
+    type: manual
+    required: true
+    evidence: |
+      For new features, verify specs/features/<FEATURE>_SPEC.md exists
+      
+# Semantic ID strategy
+semantic_ids:
+  # Format: <type>(<workstream>): <description>
+  # Example: feat(extractor/docx): add profile icon filtering
+  enabled: true
+  
+  # Commit message format
+  commit_format: conventional
+  
+  # Require workstream token in commits
+  require_workstream: true
+  
+  # Migration strategy for existing issues/PRs
+  migration:
+    # Don't automatically backfill - require manual review
+    auto_backfill: false
+    
+    # Suggest tokens based on file paths and history
+    suggest_tokens: true
+    
+    # Require explicit confirmation before applying
+    require_confirmation: true
+    
+# Agent roles and responsibilities
+roles:
+  # Feature development
+  - name: feature_developer
+    description: Implements new features, writes tests, updates docs
+    workstreams:
+      - extractor/*
+      - chunker/*
+      - feature/*
+    quality_gates:
+      - tests_pass
+      - test_coverage
+      - docs_updated
+      - spec_exists
+      
+  # Bug fixes
+  - name: bug_fixer
+    description: Fixes bugs, adds regression tests
+    workstreams:
+      - core/*
+      - extractor/*
+      - chunker/*
+    quality_gates:
+      - tests_pass
+      - test_coverage
+      
+  # Documentation
+  - name: documenter
+    description: Updates documentation, specs, guides
+    workstreams:
+      - docs/*
+    quality_gates:
+      - docs_updated
+      
+  # Infrastructure
+  - name: infra_engineer
+    description: Maintains CI/CD, dependencies, releases
+    workstreams:
+      - infra/*
+    quality_gates:
+      - tests_pass
+      
+  # Integration
+  - name: integrator
+    description: Adds tool integrations (Bob, Claude, etc.)
+    workstreams:
+      - integration/*
+    quality_gates:
+      - tests_pass
+      - test_coverage
+      - docs_updated
+      - spec_exists
+
+# Evidence requirements for quality gates
+evidence:
+  # What counts as valid evidence
+  types:
+    - test_output      # pytest output showing all tests pass
+    - coverage_report  # pytest-cov report showing >90% coverage
+    - manual_review    # Human verification with explanation
+    - ci_pass          # GitHub Actions workflow success
+    
+  # Where to store evidence
+  storage:
+    location: .gantry/evidence/
+    format: markdown
+    
+# Workflow coordination
+workflows:
+  # Feature development workflow
+  - name: feature_development
+    description: Standard feature development workflow
+    steps:
+      - name: spec
+        description: Write feature spec in specs/features/
+        required: true
+        
+      - name: implement
+        description: Implement feature with tests
+        required: true
+        quality_gates:
+          - tests_pass
+          - test_coverage
+          
+      - name: document
+        description: Update AGENTS.md, CLAUDE.md, README.md
+        required: true
+        quality_gates:
+          - docs_updated
+          
+      - name: review
+        description: Manual code review
+        required: true
+        type: manual
+        
+      - name: merge
+        description: Merge to main after all gates pass
+        required: true
+        
+  # Bug fix workflow
+  - name: bug_fix
+    description: Bug fix workflow
+    steps:
+      - name: reproduce
+        description: Add failing test that reproduces bug
+        required: true
+        
+      - name: fix
+        description: Fix bug and verify test passes
+        required: true
+        quality_gates:
+          - tests_pass
+          
+      - name: merge
+        description: Merge to main after tests pass
+        required: true
+
+# Integration with external tools
+integrations:
+  # GitHub integration
+  github:
+    enabled: true
+    # Apply workstream labels to issues/PRs
+    auto_label: true
+    # Require quality gates before merge
+    require_gates: true
+    
+  # Bob Shell integration
+  bob:
+    enabled: true
+    skills_dir: .bob/skills/
+    
+  # Claude Code integration
+  claude:
+    enabled: true
+    skills_dir: .claude/skills/
+
+# Upgrade and maintenance
+maintenance:
+  # Check for Gantry updates
+  check_updates: true
+  
+  # Validate workstream manifest on changes
+  validate_on_change: true
+  
+  # Rebuild skills after workstream changes
+  rebuild_skills: true
+  
+  # Commands to run after upgrade
+  post_upgrade:
+    - gantry skill build
+    - gantry skill validate
+    - pytest  # Verify tests still pass
