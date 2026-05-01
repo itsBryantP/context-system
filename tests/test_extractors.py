@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ctx.extractors import get_extractor
+from ctx.extractors.docx import DocxExtractor
 from ctx.extractors.markdown import MarkdownExtractor, _strip_frontmatter
 from ctx.extractors.pdf import PDFExtractor, _plain_text_to_markdown
 from ctx.extractors.pptx import PPTXExtractor
@@ -44,6 +45,16 @@ def test_get_extractor_pptx():
 def test_get_extractor_url():
     src = make_source(type=SourceType.URL, url="https://example.com")
     assert isinstance(get_extractor(src), URLExtractor)
+
+
+def test_get_extractor_docx():
+    src = make_source(type=SourceType.DOCX, path="foo.docx")
+    assert isinstance(get_extractor(src), DocxExtractor)
+
+
+def test_get_extractor_docx_with_docm():
+    src = make_source(type=SourceType.DOCX, path="foo.docm")
+    assert isinstance(get_extractor(src), DocxExtractor)
 
 
 # ── MarkdownExtractor ─────────────────────────────────────────────────────────
@@ -220,6 +231,37 @@ class TestPPTXExtractor:
                     make_source(type=SourceType.PPTX, path=str(pptx_file)),
                     tmp_path / "out",
                 )
+
+
+# ── DocxExtractor ─────────────────────────────────────────────────────────────
+
+
+class TestDocxExtractor:
+    def test_missing_path_raises(self):
+        ext = DocxExtractor()
+        with pytest.raises(ValueError, match="path"):
+            ext.extract(make_source(type=SourceType.DOCX), Path("/tmp"))
+
+    def test_file_not_found_raises(self, tmp_path):
+        ext = DocxExtractor()
+        with pytest.raises(FileNotFoundError):
+            ext.extract(
+                make_source(type=SourceType.DOCX, path=str(tmp_path / "missing.docx")),
+                tmp_path / "out",
+            )
+
+    def test_can_handle_docx(self):
+        ext = DocxExtractor()
+        assert ext.can_handle(make_source(type=SourceType.DOCX, path="foo.docx"))
+
+    def test_can_handle_docm(self):
+        ext = DocxExtractor()
+        assert ext.can_handle(make_source(type=SourceType.DOCX, path="foo.docm"))
+
+    def test_cannot_handle_other_types(self):
+        ext = DocxExtractor()
+        assert not ext.can_handle(make_source(type=SourceType.PDF, path="foo.pdf"))
+        assert not ext.can_handle(make_source(type=SourceType.MARKDOWN, path="foo.md"))
 
 
 # ── URLExtractor ──────────────────────────────────────────────────────────────
