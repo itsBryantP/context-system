@@ -32,6 +32,16 @@ class RefreshSchedule(str, Enum):
 # --- module.yaml models ---
 
 
+class ExtractionConfig(BaseModel):
+    """Configuration for content extraction."""
+
+    docx_remove_images: bool = True
+    """Remove all images from DOCX files"""
+
+    docx_filter_profile_icons: bool = True
+    """Remove profile icon artifacts from meeting transcripts"""
+
+
 class Source(BaseModel):
     type: SourceType
     path: Optional[str] = None
@@ -67,6 +77,8 @@ class ModuleConfig(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
+    extraction: Optional[ExtractionConfig] = None
+    """Optional extraction configuration"""
 
 
 # --- config.yaml models ---
@@ -75,6 +87,8 @@ class ModuleConfig(BaseModel):
 class ModuleRef(BaseModel):
     path: Optional[str] = None
     git: Optional[str] = None
+    extraction: Optional[ExtractionConfig] = None
+    """Override module's extraction config"""
 
     @model_validator(mode="after")
     def _check_one_source(self) -> "ModuleRef":
@@ -102,3 +116,5 @@ class ProjectConfig(BaseModel):
     modules: list[ModuleRef] = Field(default_factory=list)
     chunk_defaults: ChunkDefaults = Field(default_factory=ChunkDefaults)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    extraction: Optional[ExtractionConfig] = None
+    """Default extraction config for all modules"""
