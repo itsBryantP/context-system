@@ -5,6 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+# Lazy Docling DocumentConverter, shared across all docx files in a pack run.
+# Constructing a DocumentConverter loads heavy ML models — caching it amortizes
+# that cost from O(N docx files) to O(1).
+_DOCX_CONVERTER: Any = None
 
 # ── File classification ───────────────────────────────────────────────────────
 
@@ -174,6 +180,8 @@ def _extract_one(result: ScanResult, input_dir: Path, tmp_dir: Path) -> Path:
         return _extract_pdf(src, out)
     if cls == "pptx":
         return _extract_pptx_file(src, out)
+    if cls == "docx":
+        return _extract_docx_file(src, out)
     if cls == "boxnote":
         return _extract_boxnote(src, out)
     if cls == "html":
@@ -211,6 +219,24 @@ def _extract_pdf(src: Path, out: Path) -> Path:
 def _extract_pptx_file(src: Path, out: Path) -> Path:
     from ctx.extractors.pptx import _extract_pptx  # noqa: PLC0415
     out.write_text(_extract_pptx(src), encoding="utf-8")
+    return out
+
+
+def _extract_docx_file(src: Path, out: Path) -> Path:
+    global _DOCX_CONVERTER
+    from ctx.extractors.docx import _extract_docx  # noqa: PLC0415
+
+    if _DOCX_CONVERTER is None:
+        from docling.document_converter import DocumentConverter  # noqa: PLC0415
+        _DOCX_CONVERTER = DocumentConverter()
+
+    markdown = _extract_docx(
+        src,
+        _DOCX_CONVERTER,
+        remove_images=True,
+        filter_profile_icons=True,
+    )
+    out.write_text(markdown, encoding="utf-8")
     return out
 
 
