@@ -209,6 +209,7 @@ Skills in `skills/<name>/SKILL.md` symlink to both `.bob/skills/` and `.claude/s
 | `pymupdf` | PDF extraction |
 | `python-pptx` | PPTX extraction |
 | `markdownify` | HTML extraction |
+| `docling` | DOCX extraction |
 | `pytest` | Test runner (dev) |
 | `anthropic` | Contextual Retrieval (optional: `contextualize`) |
 

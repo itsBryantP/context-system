@@ -257,6 +257,8 @@ Supported file types in `ctx pack` (`_EXT_MAP` in `pack.py`):
 | `.pdf` | `pdf` | pdftotext → PyMuPDF fallback |
 | `.pptx` | `pptx` | python-pptx |
 | `.ppt` | `unsupported` | Legacy binary format; python-pptx requires .pptx |
+| `.docx`, `.docm` | `docx` | Docling conversion, configurable image filtering |
+| `.doc` | `unsupported` | Legacy binary format |
 | `.boxnote` | `boxnote` | Box Notes (ProseMirror JSON) |
 | `.html`, `.htm` | `html` | markdownify |
 | `.yaml`, `.yml`, `.json` | `structured` | Fenced code block |
@@ -298,5 +300,6 @@ The goal is that `CLAUDE.md`, `AGENTS.md`, and `.claude/settings.json` always re
 | `pymupdf` | PDF extraction (core) |
 | `python-pptx` | PPTX extraction (core) |
 | `markdownify` | HTML extraction (core) |
+| `docling` | DOCX extraction (core) |
 | `pytest` | Test runner (dev) |
 | `anthropic` | Contextual Retrieval LLM calls (optional extra: `contextualize`) |
