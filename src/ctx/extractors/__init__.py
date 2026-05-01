@@ -1,6 +1,7 @@
 """Extractor plugins for converting source formats to markdown."""
 
 from ctx.extractors.base import Extractor
+from ctx.extractors.docx import DocxExtractor
 from ctx.extractors.markdown import MarkdownExtractor
 from ctx.extractors.pdf import PDFExtractor
 from ctx.extractors.pptx import PPTXExtractor
@@ -11,6 +12,7 @@ _REGISTRY: list[Extractor] = [
     MarkdownExtractor(),
     PDFExtractor(),
     PPTXExtractor(),
+    DocxExtractor(),
     URLExtractor(),
 ]
 

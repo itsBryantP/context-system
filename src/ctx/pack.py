@@ -15,6 +15,9 @@ _EXT_MAP: dict[str, str] = {
     ".pdf": "pdf",
     ".pptx": "pptx",
     ".ppt": "unsupported",  # legacy binary format; python-pptx requires .pptx
+    ".docx": "docx",
+    ".docm": "docx",
+    ".doc": "unsupported",  # legacy binary format
     ".boxnote": "boxnote",
     ".html": "html",
     ".htm": "html",
@@ -26,9 +29,8 @@ _EXT_MAP: dict[str, str] = {
 
 @dataclass
 class ScanResult:
-    """A single file discovered during directory scanning."""
     source_path: Path
-    classification: str  # markdown | plaintext | pdf | pptx | html | structured | unsupported
+    classification: str  # markdown | plaintext | pdf | pptx | docx | html | structured | unsupported
 
 
 def scan_directory(input_dir: Path) -> list[ScanResult]:
@@ -540,6 +542,7 @@ _CLS_TO_SOURCE_TYPE: dict[str, str] = {
     "structured": "markdown",
     "pdf": "pdf",
     "pptx": "pptx",
+    "docx": "docx",
 }
 
 

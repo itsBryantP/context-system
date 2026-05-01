@@ -19,6 +19,7 @@ class SourceType(str, Enum):
     MARKDOWN = "markdown"
     PDF = "pdf"
     PPTX = "pptx"
+    DOCX = "docx"
     URL = "url"
 
 
