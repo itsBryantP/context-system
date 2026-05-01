@@ -44,6 +44,7 @@ def scan_directory(input_dir: Path) -> list[ScanResult]:
 
     Rules:
     - Hidden files and directories (name starts with '.' or '_') are skipped.
+    - Temporary files (Word ~$*, .DS_Store, etc.) are skipped.
     - Files are sorted by path for deterministic output.
     - Returns all files, including unsupported ones (callers decide what to skip).
     """
@@ -56,10 +57,34 @@ def scan_directory(input_dir: Path) -> list[ScanResult]:
         # Skip anything inside a hidden or underscore-prefixed directory
         if any(part.startswith((".", "_")) for part in path.relative_to(input_dir).parts):
             continue
+        # Skip temporary files
+        if _is_temp_file(path):
+            continue
         classification = _EXT_MAP.get(path.suffix.lower(), "unsupported")
         results.append(ScanResult(source_path=path, classification=classification))
 
     return results
+
+
+def _is_temp_file(path: Path) -> bool:
+    """Check if file is a temporary file that should be skipped.
+    
+    Filters:
+    - Word/Excel lock files (~$*)
+    - macOS metadata (.DS_Store, ._*)
+    - Windows thumbnails (Thumbs.db, case-insensitive)
+    - Generic temp files (*.tmp)
+    - Editor swap/backup files (*.swp, *.swo, *~)
+    """
+    name = path.name
+    return (
+        name.startswith('~$') or              # Word/Excel lock files
+        name == '.DS_Store' or                # macOS metadata
+        name.lower() == 'thumbs.db' or        # Windows thumbnails (case-insensitive)
+        name.startswith('._') or              # macOS resource forks
+        name.endswith(('.tmp', '.swp', '.swo')) or  # Temp and swap files
+        name.endswith('~')                    # Editor backup files
+    )
 
 
 # ── Strategy auto-selection ───────────────────────────────────────────────────
@@ -224,20 +249,24 @@ def _extract_pptx_file(src: Path, out: Path) -> Path:
 
 def _extract_docx_file(src: Path, out: Path) -> Path:
     global _DOCX_CONVERTER
-    from ctx.extractors.docx import _extract_docx  # noqa: PLC0415
+    from ctx.extractors.docx import _extract_docx, ExtractionError  # noqa: PLC0415
 
     if _DOCX_CONVERTER is None:
         from docling.document_converter import DocumentConverter  # noqa: PLC0415
         _DOCX_CONVERTER = DocumentConverter()
 
-    markdown = _extract_docx(
-        src,
-        _DOCX_CONVERTER,
-        remove_images=True,
-        filter_profile_icons=True,
-    )
-    out.write_text(markdown, encoding="utf-8")
-    return out
+    try:
+        markdown = _extract_docx(
+            src,
+            _DOCX_CONVERTER,
+            remove_images=True,
+            filter_profile_icons=True,
+        )
+        out.write_text(markdown, encoding="utf-8")
+        return out
+    except ExtractionError as e:
+        # Re-raise with user-friendly message intact
+        raise RuntimeError(str(e)) from e
 
 
 def _extract_boxnote(src: Path, out: Path) -> Path:
