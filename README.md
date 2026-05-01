@@ -114,10 +114,11 @@ ctx chunks ~/api-patterns | head -5
 | `.txt` | Filename becomes `# heading`, content follows |
 | `.pdf` | pdftotext (poppler) → PyMuPDF fallback → markdown |
 | `.pptx` | Slides → `## Slide N`, speaker notes → blockquotes |
+| `.docx`, `.docm` | Docling conversion → markdown; profile icons and embedded images stripped by default |
 | `.boxnote` | Box Notes (ProseMirror JSON) → markdown with headings and lists |
 | `.html`, `.htm` | Converted via markdownify |
 | `.yaml`, `.yml`, `.json` | Wrapped in a fenced code block with filename as heading |
-| `.ppt` | Skipped — legacy binary format, use `.pptx` instead |
+| `.ppt`, `.doc` | Skipped — legacy binary formats, convert to `.pptx` / `.docx` |
 | Everything else | Skipped with a warning |
 
 Subdirectories are scanned recursively. Hidden directories (`.git`, `_private`) are ignored.
@@ -600,6 +601,27 @@ ctx extract ~/docs/deck.pptx --into ./my-module
 # Each slide → ## Slide N heading
 # Speaker notes → > blockquotes
 # Output: content/deck.md
+```
+
+### Word Documents
+
+```bash
+ctx extract ~/docs/spec.docx --into ./my-module
+# Backend: IBM Docling — handles .docx and .docm (Office 2007+, Google Docs,
+# LibreOffice, Pages exports). Legacy .doc is not supported; convert first.
+# Profile-icon <!-- image --> comments (common in Teams meeting transcripts)
+# are stripped by default; embedded images are removed.
+# Frontmatter emitted: doc_title, doc_author, file_hash, file_size,
+# modified_at, converted_at, source_type.
+# Output: content/spec.md
+```
+
+Override the defaults per module by adding an `extraction:` block to `module.yaml`:
+
+```yaml
+extraction:
+  docx_remove_images: false          # keep embedded images
+  docx_filter_profile_icons: false   # keep <!-- image --> comments
 ```
 
 ### URL
