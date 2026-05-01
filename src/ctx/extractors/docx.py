@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import re
+from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 from ctx.extractors.base import Extractor
 from ctx.schema import Source, SourceType
@@ -56,7 +60,9 @@ def _extract_docx(docx_path: Path, converter, remove_images: bool, filter_profil
             markdown = _remove_all_images(markdown)
 
         markdown = _normalize_whitespace(markdown)
-        return markdown
+        
+        frontmatter = _build_frontmatter(result, docx_path)
+        return f"{frontmatter}\n\n{markdown}"
 
     except Exception as e:
         raise RuntimeError(f"Failed to extract {docx_path}: {e}")
@@ -75,3 +81,26 @@ def _remove_all_images(markdown: str) -> str:
 def _normalize_whitespace(markdown: str) -> str:
     markdown = re.sub(r"\n{3,}", "\n\n", markdown)
     return markdown.strip()
+
+
+def _build_frontmatter(result, source: Path) -> str:
+    metadata = {}
+    
+    if hasattr(result.document, 'title') and result.document.title:
+        metadata['doc_title'] = result.document.title
+    if hasattr(result.document, 'author') and result.document.author:
+        metadata['doc_author'] = result.document.author
+    
+    metadata['file_hash'] = _compute_hash(source)
+    metadata['file_size'] = source.stat().st_size
+    metadata['modified_at'] = datetime.fromtimestamp(source.stat().st_mtime).isoformat()
+    metadata['converted_at'] = datetime.utcnow().isoformat()
+    metadata['converter'] = 'docling'
+    metadata['source_type'] = 'docx'
+    
+    yaml_str = yaml.dump(metadata, default_flow_style=False, sort_keys=False)
+    return f"---\n{yaml_str}---"
+
+
+def _compute_hash(source: Path) -> str:
+    return hashlib.sha256(source.read_bytes()).hexdigest()
