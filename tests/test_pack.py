@@ -10,6 +10,7 @@ import pytest
 from ctx.pack import (
     ExtractedFile,
     ScanResult,
+    _is_temp_file,
     build_strategy_map,
     chunk_files,
     extract_files,
@@ -133,8 +134,63 @@ class TestScanDirectory:
         results = scan_directory(tmp_path)
         assert results[0].classification == "unsupported"
 
+    def test_filters_word_lock_files(self, tmp_path):
+        make_tree(tmp_path, ["report.docx", "~$report.docx", "~$WRL0001.tmp"])
+        results = scan_directory(tmp_path)
+        names = {r.source_path.name for r in results}
+        assert "report.docx" in names
+        assert "~$report.docx" not in names
+        assert "~$WRL0001.tmp" not in names
+
+    def test_filters_os_artifacts(self, tmp_path):
+        make_tree(tmp_path, [
+            "real.txt",
+            ".DS_Store",
+            "Thumbs.db",
+            "THUMBS.DB",
+            "cache.tmp",
+        ])
+        results = scan_directory(tmp_path)
+        names = {r.source_path.name for r in results}
+        assert "real.txt" in names
+        assert ".DS_Store" not in names
+        assert "Thumbs.db" not in names
+        assert "THUMBS.DB" not in names
+        assert "cache.tmp" not in names
+
+    def test_filters_editor_swap_files(self, tmp_path):
+        make_tree(tmp_path, [
+            "notes.md",
+            ".notes.md.swp",
+            ".notes.md.swo",
+            "notes.md~",
+        ])
+        results = scan_directory(tmp_path)
+        names = {r.source_path.name for r in results}
+        assert "notes.md" in names
+        assert ".notes.md.swp" not in names
+        assert ".notes.md.swo" not in names
+        assert "notes.md~" not in names
+
 
 # ── kebab_case ────────────────────────────────────────────────────────────────
+
+
+def test_is_temp_file():
+    """_is_temp_file correctly identifies temp file patterns."""
+    assert _is_temp_file(Path("~$report.docx")) is True
+    assert _is_temp_file(Path(".DS_Store")) is True
+    assert _is_temp_file(Path("Thumbs.db")) is True
+    assert _is_temp_file(Path("THUMBS.DB")) is True
+    assert _is_temp_file(Path("cache.tmp")) is True
+    assert _is_temp_file(Path(".file.swp")) is True
+    assert _is_temp_file(Path(".file.swo")) is True
+    assert _is_temp_file(Path("backup~")) is True
+    assert _is_temp_file(Path("._resource")) is True
+
+    assert _is_temp_file(Path("report.docx")) is False
+    assert _is_temp_file(Path("normal.txt")) is False
+    assert _is_temp_file(Path("~notes.md")) is False  # ~ suffix only, not prefix
 
 
 class TestKebabCase:
