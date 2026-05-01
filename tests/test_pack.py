@@ -372,6 +372,62 @@ class TestExtractFiles:
         assert not failures
         assert "## Slide 1" in extracted[0].md_path.read_text()
 
+    def test_docx_extraction_uses_internal_helper(self, tmp_path):
+        src = tmp_path / "report.docx"
+        src.write_bytes(b"PK\x03\x04")  # zip header — never opened, _extract_docx is mocked
+        tmp_out = tmp_path / "out"
+        tmp_out.mkdir()
+
+        captured: dict = {}
+
+        def fake_extract(docx_path, converter, *, remove_images, filter_profile_icons):
+            captured["path"] = docx_path
+            captured["remove_images"] = remove_images
+            captured["filter_profile_icons"] = filter_profile_icons
+            return "---\nsource_type: docx\n---\n\n# report\n"
+
+        with (
+            patch("ctx.pack._DOCX_CONVERTER", object()),
+            patch("ctx.extractors.docx._extract_docx", side_effect=fake_extract),
+        ):
+            extracted, failures = extract_files(
+                [ScanResult(source_path=src, classification="docx")],
+                tmp_path,
+                tmp_out,
+            )
+        assert not failures
+        assert len(extracted) == 1
+        assert extracted[0].classification == "docx"
+        assert extracted[0].md_path.read_text().startswith("---\nsource_type: docx\n---")
+        assert captured["path"] == src
+        assert captured["remove_images"] is True
+        assert captured["filter_profile_icons"] is True
+
+    def test_docx_dispatch_does_not_skip(self, tmp_path):
+        """Regression guard for the 'Unknown classification: docx' bug.
+
+        If a future refactor drops the `docx` branch from `_extract_one`,
+        the dispatcher raises ValueError, extract_files records a failure,
+        and this test fails — exactly the symptom that motivated the fix.
+        """
+        src = tmp_path / "doc.docx"
+        src.write_bytes(b"PK\x03\x04")
+        tmp_out = tmp_path / "out"
+        tmp_out.mkdir()
+
+        with (
+            patch("ctx.pack._DOCX_CONVERTER", object()),
+            patch("ctx.extractors.docx._extract_docx", return_value="# ok\n"),
+        ):
+            extracted, failures = extract_files(
+                [ScanResult(source_path=src, classification="docx")],
+                tmp_path,
+                tmp_out,
+            )
+        assert failures == []
+        assert len(extracted) == 1
+        assert extracted[0].classification == "docx"
+
     # ── unsupported files are skipped ─────────────────────────────────────────
 
     def test_unsupported_files_are_skipped(self, tmp_path):
